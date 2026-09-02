@@ -93,7 +93,9 @@ public class SbeScreen extends Screen {
         addDescription("Configure overlays and the in-game position editor.", x, y + 20);
 
         addSettingButton("Position / Size Editor", "Drag HUD elements and scroll to resize them.", x, y + 52, w,
-                Component.literal("/sbe gui"), b -> { });
+                Component.literal("/sbe gui"), b -> {
+                    Minecraft.getInstance().gui.setScreen(new SbeScreen(this));
+                });
 
         addToggle("Pet Overlay", c.petOverlayEnabled, x, y + 113, w, () -> c.petOverlayEnabled = !c.petOverlayEnabled);
         addToggle("Farming RNG", c.farmingRngEnabled, x, y + 145, w, () -> c.farmingRngEnabled = !c.farmingRngEnabled);
@@ -131,7 +133,7 @@ public class SbeScreen extends Screen {
                 int col = i % columns;
                 int row = i / columns;
                 addItemToggle(item, enabled, x + col * (colW + 8), yy + row * 29, colW,
-                        () -> c.harvestFeastDrops.put(item, !enabled));
+                        () -> c.harvestFeastDrops.put(item, !c.harvestFeastDrops.getOrDefault(item, true)));
             }
             yy += ((HARVEST_FEAST_DROPS.length + 1) / 2) * 29 + 10;
         }
@@ -159,9 +161,8 @@ public class SbeScreen extends Screen {
                 int i = 0;
                 for (Map.Entry<String, Boolean> entry : c.farmingDyes.entrySet()) {
                     final String item = entry.getKey();
-                    final boolean enabled = entry.getValue();
-                    addItemToggle(item, enabled, x, yy + i * 29, w,
-                            () -> c.farmingDyes.put(item, !enabled));
+                    addItemToggle(item, entry.getValue(), x, yy + i * 29, w,
+                            () -> c.farmingDyes.put(item, !c.farmingDyes.getOrDefault(item, true)));
                     i++;
                 }
             }
@@ -199,7 +200,16 @@ public class SbeScreen extends Screen {
         addRenderableWidget(new PanelWidget(x, y - 2, w, 28, name, ""));
         Button button = Button.builder(toggleText(name, enabled), b -> {
             action.run();
-            b.setMessage(toggleText(name, !enabled));
+            boolean nowEnabled = name.equals("Pet Overlay") ? SkyblockExtrasClient.CONFIG.petOverlayEnabled
+                    : name.equals("Farming RNG") ? SkyblockExtrasClient.CONFIG.farmingRngEnabled
+                    : name.equals("Show Pet Icon") ? SkyblockExtrasClient.CONFIG.showPetIcon
+                    : name.equals("Show Pet Level") ? SkyblockExtrasClient.CONFIG.showPetLevel
+                    : name.equals("Show Pet Progress") ? SkyblockExtrasClient.CONFIG.showPetProgress
+                    : name.equals("Show Pet XP") ? SkyblockExtrasClient.CONFIG.showPetXp
+                    : name.equals("Show Overflow XP") ? SkyblockExtrasClient.CONFIG.showOverflowXp
+                    : name.equals("Show Pet Item") ? SkyblockExtrasClient.CONFIG.showPetItem
+                    : !enabled;
+            b.setMessage(toggleText(name, nowEnabled));
             SkyblockExtrasClient.CONFIG.save();
         }).bounds(x + w - 165, y, 155, 24).build();
         addRenderableWidget(button);
@@ -209,7 +219,10 @@ public class SbeScreen extends Screen {
         addRenderableWidget(new PanelWidget(x, y - 2, w, 28, name, ""));
         Button button = Button.builder(toggleText("Enabled", enabled), b -> {
             action.run();
-            b.setMessage(toggleText("Enabled", !enabled));
+            boolean nowEnabled = name.equals("Epic Slug") ? SkyblockExtrasClient.CONFIG.epicSlug
+                    : name.equals("Legendary Slug") ? SkyblockExtrasClient.CONFIG.legendarySlug
+                    : SkyblockExtrasClient.CONFIG.harvestFeastDrops.getOrDefault(name, true);
+            b.setMessage(toggleText("Enabled", nowEnabled));
             SkyblockExtrasClient.CONFIG.save();
         }).bounds(x + w - 105, y, 95, 24).build();
         addRenderableWidget(button);
@@ -222,7 +235,10 @@ public class SbeScreen extends Screen {
                 .bounds(x, y, 150, 26).build());
         addRenderableWidget(Button.builder(toggleText("Enabled", enabled), b -> {
             toggleAction.run();
-            b.setMessage(toggleText("Enabled", !enabled));
+            boolean nowEnabled = name.equals("Harvest Feast") ? SkyblockExtrasClient.CONFIG.harvestFeastEnabled
+                    : name.equals("Slugs") ? SkyblockExtrasClient.CONFIG.slugEnabled
+                    : SkyblockExtrasClient.CONFIG.dyesEnabled;
+            b.setMessage(toggleText("Enabled", nowEnabled));
             SkyblockExtrasClient.CONFIG.save();
         }).bounds(x + w - 120, y + 1, 110, 24).build());
     }
@@ -253,6 +269,7 @@ public class SbeScreen extends Screen {
     private class BackgroundWidget extends AbstractWidget {
         private BackgroundWidget(int x, int y, int width, int height) {
             super(x, y, width, height, Component.empty());
+            this.active = false;
         }
 
         @Override
@@ -328,6 +345,7 @@ public class SbeScreen extends Screen {
             super(x, y, Math.max(1, SbeScreen.this.font.width(text) + 2), 18, Component.empty());
             this.text = text;
             this.color = color;
+            this.active = false;
         }
 
         @Override
@@ -347,6 +365,7 @@ public class SbeScreen extends Screen {
             super(x, y, width, height, Component.empty());
             this.title = title;
             this.description = description;
+            this.active = false;
         }
 
         @Override
