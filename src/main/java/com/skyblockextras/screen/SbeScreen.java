@@ -4,6 +4,7 @@ import com.skyblockextras.SkyblockExtrasClient;
 import com.skyblockextras.config.SbeConfig;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -26,9 +27,10 @@ public class SbeScreen extends Screen {
         int centerX = this.width / 2;
         int y = 45;
 
-        /*
-         * Farming RNG
-         */
+        // =========================================================
+        // FARMING RNG
+        // =========================================================
+
         this.addRenderableWidget(
                 Button.builder(
                         toggleText(
@@ -53,9 +55,10 @@ public class SbeScreen extends Screen {
 
         y += 25;
 
-        /*
-         * Harvest Feast
-         */
+        // =========================================================
+        // HARVEST FEAST
+        // =========================================================
+
         this.addRenderableWidget(
                 Button.builder(
                         toggleText(
@@ -80,9 +83,10 @@ public class SbeScreen extends Screen {
 
         y += 25;
 
-        /*
-         * Slugs
-         */
+        // =========================================================
+        // SLUGS
+        // =========================================================
+
         this.addRenderableWidget(
                 Button.builder(
                         toggleText(
@@ -107,9 +111,10 @@ public class SbeScreen extends Screen {
 
         y += 25;
 
-        /*
-         * Farming dyes
-         */
+        // =========================================================
+        // FARMING DYES
+        // =========================================================
+
         this.addRenderableWidget(
                 Button.builder(
                         toggleText(
@@ -134,9 +139,10 @@ public class SbeScreen extends Screen {
 
         y += 25;
 
-        /*
-         * Pet overlay
-         */
+        // =========================================================
+        // PET OVERLAY
+        // =========================================================
+
         this.addRenderableWidget(
                 Button.builder(
                         toggleText(
@@ -161,9 +167,10 @@ public class SbeScreen extends Screen {
 
         y += 35;
 
-        /*
-         * Done
-         */
+        // =========================================================
+        // DONE
+        // =========================================================
+
         this.addRenderableWidget(
                 Button.builder(
                         Component.literal("Done"),
@@ -172,14 +179,56 @@ public class SbeScreen extends Screen {
         );
     }
 
-    private Component toggleText(String name, boolean enabled) {
+    // =============================================================
+    // MINECRAFT 26.2 GUI RENDERING
+    // =============================================================
+
+    @Override
+    public void extractRenderState(
+            GuiGraphicsExtractor graphics,
+            int mouseX,
+            int mouseY,
+            float delta
+    ) {
+        // This is REQUIRED so Minecraft renders the background
+        // and all widgets registered in init().
+        super.extractRenderState(
+                graphics,
+                mouseX,
+                mouseY,
+                delta
+        );
+
+        // Draw the title.
+        graphics.text(
+                this.font,
+                this.title,
+                this.width / 2 - this.font.width(this.title) / 2,
+                20,
+                0xFFFFFFFF,
+                true
+        );
+    }
+
+    // =============================================================
+    // BUTTON TEXT
+    // =============================================================
+
+    private Component toggleText(
+            String name,
+            boolean enabled
+    ) {
         return Component.literal(
                 name + ": " + (enabled ? "ON" : "OFF")
         );
     }
 
+    // =============================================================
+    // CLOSE
+    // =============================================================
+
     @Override
     public void onClose() {
-       Minecraft.getInstance().gui.setScreen(parent);
+        Minecraft.getInstance().gui.setScreen(parent);
     }
 }
