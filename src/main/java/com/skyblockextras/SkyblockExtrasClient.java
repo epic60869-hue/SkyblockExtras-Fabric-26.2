@@ -76,8 +76,16 @@ public class SkyblockExtrasClient implements ClientModInitializer {
     private static int openSettings(Minecraft minecraft) {
         if (minecraft == null) return 0;
 
-        System.out.println("[SBE] /sbe executed - opening settings GUI.");
-        minecraft.gui.setScreen(new SbeScreen(null));
+        System.out.println("[SBE] /sbe executed - scheduling settings GUI.");
+
+        // Client commands are executed while the chat screen is still closing.
+        // Schedule the screen change for the next client tick so the chat screen
+        // cannot immediately replace our settings screen.
+        minecraft.execute(() -> {
+            System.out.println("[SBE] Opening settings GUI now.");
+            minecraft.gui.setScreen(new SbeScreen(null));
+        });
+
         return 1;
     }
 }
