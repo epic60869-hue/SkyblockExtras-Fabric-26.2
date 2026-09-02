@@ -3,7 +3,6 @@ package com.skyblockextras.screen;
 import com.skyblockextras.SkyblockExtrasClient;
 import com.skyblockextras.config.SbeConfig;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -12,14 +11,13 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-import java.util.Map;
-
 public class SbeScreen extends Screen {
     private final Screen parent;
     private String category = "GUI";
     private int left, top, widthBox, heightBox;
+
     private boolean harvestExpanded = true;
-    private boolean slugsExpanded = true;
+    private boolean slugsExpanded = false;
     private boolean dyesExpanded = false;
 
     private static final String[] CATEGORIES = {
@@ -47,218 +45,212 @@ public class SbeScreen extends Screen {
     @Override
     protected void rebuildWidgets() {
         this.clearWidgets();
-        widthBox = Math.min(980, this.width - 50);
-        heightBox = Math.min(720, this.height - 40);
+
+        widthBox = Math.min(1180, this.width - 40);
+        heightBox = Math.min(760, this.height - 32);
         left = (this.width - widthBox) / 2;
         top = (this.height - heightBox) / 2;
 
+        // Decorative background. It is deliberately non-interactive.
         this.addRenderableWidget(new BackgroundWidget(left, top, widthBox, heightBox));
 
-        int categoryY = top + 93;
-        for (String name : CATEGORIES) {
-            final String selected = name;
-            this.addRenderableWidget(Button.builder(Component.literal(name), button -> {
-                category = selected;
-                rebuildWidgets();
-            }).bounds(left + 28, categoryY, 190, 26).build());
-            categoryY += 31;
+        // Sidebar.
+        int sideX = left + 18;
+        int sideY = top + 86;
+        int sideW = 205;
+        int sideH = heightBox - 145;
+
+        this.addRenderableWidget(new PanelWidget(sideX, sideY, sideW, sideH));
+
+        for (int i = 0; i < CATEGORIES.length; i++) {
+            final String selected = CATEGORIES[i];
+            int y = sideY + 44 + i * 48;
+            addCategoryButton(selected, sideX + 10, y, sideW - 20);
         }
+
+        // Main content panel.
+        int contentX = left + 238;
+        int contentY = top + 86;
+        int contentW = widthBox - 256;
+        int contentH = heightBox - 145;
+        this.addRenderableWidget(new PanelWidget(contentX, contentY, contentW, contentH));
 
         switch (category) {
-            case "GUI" -> addGuiControls();
-            case "Farming RNG" -> addFarmingControls();
-            case "Pet" -> addPetControls();
-            default -> { }
+            case "About" -> buildAbout(contentX, contentY, contentW);
+            case "GUI" -> buildGui(contentX, contentY, contentW);
+            case "Farming RNG" -> buildFarming(contentX, contentY, contentW);
+            case "Pet" -> buildPet(contentX, contentY, contentW);
+            default -> buildComingSoon(contentX, contentY, contentW);
         }
 
-        this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> onClose())
-                .bounds(left + widthBox - 112, top + heightBox - 35, 90, 24).build());
+        addStyledButton("Done", left + widthBox - 132, top + heightBox - 48, 112, 28,
+                true, this::onClose);
     }
 
-    private int contentX() {
-        return left + 250;
-    }
-
-    private int contentW() {
-        return widthBox - 275;
-    }
-
-    private void addGuiControls() {
-        SbeConfig c = SkyblockExtrasClient.CONFIG;
-        int x = contentX() + 22;
-        int y = top + 100;
-        int w = contentW() - 44;
-
-        addSectionLabel("GUI & HUD", x, y);
-        addDescription("Configure overlays and the in-game position editor.", x, y + 20);
-
-        addSettingButton("Position / Size Editor", "Drag HUD elements and scroll to resize them.", x, y + 52, w,
-                Component.literal("/sbe gui"), b -> {
-                    Minecraft.getInstance().gui.setScreen(new SbeScreen(this));
-                });
-
-        addToggle("Pet Overlay", c.petOverlayEnabled, x, y + 113, w, () -> c.petOverlayEnabled = !c.petOverlayEnabled);
-        addToggle("Farming RNG", c.farmingRngEnabled, x, y + 145, w, () -> c.farmingRngEnabled = !c.farmingRngEnabled);
-
-        addSectionLabel("INVENTORY", x, y + 194);
-        addDescription("Inventory-specific display settings will live here.", x, y + 214);
-        addSliderVisual("Inventory GUI Scale", x, y + 247, w, "100%");
-
-        addSectionLabel("KEYBINDS", x, y + 294);
-        addDescription("The position editor keybind will be configurable here.", x, y + 314);
-    }
-
-    private void addFarmingControls() {
-        SbeConfig c = SkyblockExtrasClient.CONFIG;
-        int x = contentX() + 22;
-        int y = top + 96;
-        int w = contentW() - 44;
-
-        addSectionLabel("FARMING RNG", x, y);
-        addDescription("Only enabled items are tracked. Timers are saved between restarts.", x, y + 20);
-        addToggle("Farming RNG", c.farmingRngEnabled, x, y + 51, w, () -> c.farmingRngEnabled = !c.farmingRngEnabled);
-
-        int yy = y + 88;
-        addCollapsible("Harvest Feast", c.harvestFeastEnabled, harvestExpanded, x, yy, w, () -> {
-            harvestExpanded = !harvestExpanded;
+    private void addCategoryButton(String name, int x, int y, int w) {
+        addStyledButton(name, x, y, w, 38, name.equals(category), () -> {
+            category = name;
             rebuildWidgets();
-        }, () -> c.harvestFeastEnabled = !c.harvestFeastEnabled);
-        yy += 32;
+        });
+    }
+
+    private void buildAbout(int x, int y, int w) {
+        addHeader("ABOUT", "Skyblock Extras client-side utilities", x + 22, y + 22);
+
+        addCard(x + 20, y + 72, w - 40, 96, "Skyblock Extras",
+                "A client-side SkyBlock utility mod for Minecraft 26.2.");
+        addText("Version 0.1.2", x + 34, y + 126, 0xFFB45CFF);
+        addText("Configure HUDs, farming RNG tracking and other utilities from this menu.",
+                x + 34, y + 148, 0xFF9B9BA6);
+    }
+
+    private void buildGui(int x, int y, int w) {
+        addHeader("GUI & HUD", "Configure overlays and the in-game position editor.", x + 22, y + 22);
+
+        int yy = y + 78;
+        addToggleCard("Pet Overlay", "Display the active pet information HUD.",
+                SkyblockExtrasClient.CONFIG.petOverlayEnabled, x + 20, yy, w - 40,
+                () -> SkyblockExtrasClient.CONFIG.petOverlayEnabled = !SkyblockExtrasClient.CONFIG.petOverlayEnabled);
+        yy += 66;
+
+        addCard(x + 20, yy, w - 40, 66, "Position / Size Editor",
+                "Drag HUD elements and scroll to resize them.");
+        addStyledButton("OPEN", x + w - 118, yy + 19, 82, 28, false,
+                () -> Minecraft.getInstance().gui.setScreen(new SbeScreen(this)));
+    }
+
+    private void buildFarming(int x, int y, int w) {
+        addHeader("FARMING RNG", "Track rare farming drops in chat with persistent timers.", x + 22, y + 22);
+
+        int innerX = x + 20;
+        int innerW = w - 40;
+        int yy = y + 72;
+
+        addToggleCard("Farming RNG", "Master switch for all farming RNG tracking.",
+                SkyblockExtrasClient.CONFIG.farmingRngEnabled, innerX, yy, innerW,
+                () -> SkyblockExtrasClient.CONFIG.farmingRngEnabled = !SkyblockExtrasClient.CONFIG.farmingRngEnabled);
+        yy += 64;
+
+        yy = addSection("HARVEST FEAST", "Track Harvest Feast drops.",
+                SkyblockExtrasClient.CONFIG.harvestFeastEnabled, harvestExpanded,
+                innerX, yy, innerW,
+                () -> { harvestExpanded = !harvestExpanded; rebuildWidgets(); },
+                () -> SkyblockExtrasClient.CONFIG.harvestFeastEnabled = !SkyblockExtrasClient.CONFIG.harvestFeastEnabled);
+
         if (harvestExpanded) {
             int columns = 2;
-            int colW = (w - 8) / columns;
+            int gap = 8;
+            int colW = (innerW - gap) / columns;
+            int rowH = 34;
             for (int i = 0; i < HARVEST_FEAST_DROPS.length; i++) {
                 String item = HARVEST_FEAST_DROPS[i];
-                boolean enabled = c.harvestFeastDrops.getOrDefault(item, true);
-                int col = i % columns;
-                int row = i / columns;
-                addItemToggle(item, enabled, x + col * (colW + 8), yy + row * 29, colW,
-                        () -> c.harvestFeastDrops.put(item, !c.harvestFeastDrops.getOrDefault(item, true)));
+                int col = i % 2;
+                int row = i / 2;
+                int ix = innerX + col * (colW + gap);
+                int iy = yy + row * rowH;
+                boolean enabled = SkyblockExtrasClient.CONFIG.harvestFeastDrops.getOrDefault(item, true);
+                addItemToggle(item, enabled, ix, iy, colW,
+                        () -> SkyblockExtrasClient.CONFIG.harvestFeastDrops.put(item, !enabled));
             }
-            yy += ((HARVEST_FEAST_DROPS.length + 1) / 2) * 29 + 10;
+            yy += ((HARVEST_FEAST_DROPS.length + 1) / 2) * rowH + 10;
         }
 
-        addCollapsible("Slugs", c.slugEnabled, slugsExpanded, x, yy, w, () -> {
-            slugsExpanded = !slugsExpanded;
-            rebuildWidgets();
-        }, () -> c.slugEnabled = !c.slugEnabled);
-        yy += 32;
+        yy = addSection("SLUGS", "Track Epic and Legendary Slug drops.",
+                SkyblockExtrasClient.CONFIG.slugEnabled, slugsExpanded,
+                innerX, yy, innerW,
+                () -> { slugsExpanded = !slugsExpanded; rebuildWidgets(); },
+                () -> SkyblockExtrasClient.CONFIG.slugEnabled = !SkyblockExtrasClient.CONFIG.slugEnabled);
+
         if (slugsExpanded) {
-            addItemToggle("Epic Slug", c.epicSlug, x, yy, w, () -> c.epicSlug = !c.epicSlug);
-            addItemToggle("Legendary Slug", c.legendarySlug, x, yy + 29, w, () -> c.legendarySlug = !c.legendarySlug);
-            yy += 68;
+            addItemToggle("Epic Slug", SkyblockExtrasClient.CONFIG.epicSlug,
+                    innerX, yy, innerW, () -> SkyblockExtrasClient.CONFIG.epicSlug = !SkyblockExtrasClient.CONFIG.epicSlug);
+            addItemToggle("Legendary Slug", SkyblockExtrasClient.CONFIG.legendarySlug,
+                    innerX, yy + 36, innerW, () -> SkyblockExtrasClient.CONFIG.legendarySlug = !SkyblockExtrasClient.CONFIG.legendarySlug);
+            yy += 76;
         }
 
-        addCollapsible("Farming Dyes", c.dyesEnabled, dyesExpanded, x, yy, w, () -> {
-            dyesExpanded = !dyesExpanded;
-            rebuildWidgets();
-        }, () -> c.dyesEnabled = !c.dyesEnabled);
-        yy += 34;
-        if (dyesExpanded) {
-            if (c.farmingDyes.isEmpty()) {
-                addDescription("No farming dyes configured yet.", x + 8, yy);
-            } else {
-                int i = 0;
-                for (Map.Entry<String, Boolean> entry : c.farmingDyes.entrySet()) {
-                    final String item = entry.getKey();
-                    addItemToggle(item, entry.getValue(), x, yy + i * 29, w,
-                            () -> c.farmingDyes.put(item, !c.farmingDyes.getOrDefault(item, true)));
-                    i++;
-                }
-            }
-        }
+        addSection("FARMING DYES", "Track farming-related dye drops.",
+                SkyblockExtrasClient.CONFIG.dyesEnabled, dyesExpanded,
+                innerX, yy, innerW,
+                () -> { dyesExpanded = !dyesExpanded; rebuildWidgets(); },
+                () -> SkyblockExtrasClient.CONFIG.dyesEnabled = !SkyblockExtrasClient.CONFIG.dyesEnabled);
     }
 
-    private void addPetControls() {
+    private int addSection(String title, String description, boolean enabled, boolean expanded,
+                           int x, int y, int w, Runnable expand, Runnable toggle) {
+        addRenderableWidget(new SectionBackgroundWidget(x, y, w, expanded ? 40 : 54));
+        String arrow = expanded ? "⌄" : "›";
+        addStyledButton(arrow + "  " + title, x + 8, y + 7, 190, 32, false, expand);
+        addText(description, x + 16, y + 39, 0xFF888894);
+        addToggleButton("Enabled", enabled, x + w - 116, y + 11, 100,
+                () -> { toggle.run(); rebuildWidgets(); });
+        return y + (expanded ? 40 : 54);
+    }
+
+    private void buildPet(int x, int y, int w) {
+        addHeader("PET OVERLAY", "Choose which information is visible in the pet HUD.", x + 22, y + 22);
+
+        int yy = y + 72;
+        int innerX = x + 20;
+        int innerW = w - 40;
         SbeConfig c = SkyblockExtrasClient.CONFIG;
-        int x = contentX() + 22;
-        int y = top + 96;
-        int w = contentW() - 44;
 
-        addSectionLabel("PET OVERLAY", x, y);
-        addDescription("Choose which information is visible in the pet HUD.", x, y + 20);
-        addToggle("Pet Overlay", c.petOverlayEnabled, x, y + 51, w, () -> c.petOverlayEnabled = !c.petOverlayEnabled);
-        addToggle("Show Pet Icon", c.showPetIcon, x, y + 83, w, () -> c.showPetIcon = !c.showPetIcon);
-        addToggle("Show Pet Level", c.showPetLevel, x, y + 115, w, () -> c.showPetLevel = !c.showPetLevel);
-        addToggle("Show Pet Progress", c.showPetProgress, x, y + 147, w, () -> c.showPetProgress = !c.showPetProgress);
-        addToggle("Show Pet XP", c.showPetXp, x, y + 179, w, () -> c.showPetXp = !c.showPetXp);
-        addToggle("Show Overflow XP", c.showOverflowXp, x, y + 211, w, () -> c.showOverflowXp = !c.showOverflowXp);
-        addToggle("Show Pet Item", c.showPetItem, x, y + 243, w, () -> c.showPetItem = !c.showPetItem);
-
-        addSectionLabel("SIZE", x, y + 288);
-        addSliderVisual("Pet Scale", x, y + 320, w, String.format("%.1fx", c.petScale));
-        addDescription("Position: X " + c.petX + "  Y " + c.petY, x, y + 355);
+        addToggleCard("Pet Overlay", "Display the pet HUD.", c.petOverlayEnabled, innerX, yy, innerW,
+                () -> c.petOverlayEnabled = !c.petOverlayEnabled); yy += 62;
+        addToggleCard("Pet Icon", "Show the pet icon.", c.showPetIcon, innerX, yy, innerW,
+                () -> c.showPetIcon = !c.showPetIcon); yy += 62;
+        addToggleCard("Pet Level", "Show the current pet level.", c.showPetLevel, innerX, yy, innerW,
+                () -> c.showPetLevel = !c.showPetLevel); yy += 62;
+        addToggleCard("Pet Progress", "Show the XP progress bar.", c.showPetProgress, innerX, yy, innerW,
+                () -> c.showPetProgress = !c.showPetProgress); yy += 62;
+        addToggleCard("Pet XP", "Show total pet XP.", c.showPetXp, innerX, yy, innerW,
+                () -> c.showPetXp = !c.showPetXp); yy += 62;
+        addToggleCard("Overflow XP", "Show overflow XP.", c.showOverflowXp, innerX, yy, innerW,
+                () -> c.showOverflowXp = !c.showOverflowXp); yy += 62;
+        addToggleCard("Pet Item", "Show the held pet item.", c.showPetItem, innerX, yy, innerW,
+                () -> c.showPetItem = !c.showPetItem);
     }
 
-    private void addSettingButton(String title, String description, int x, int y, int w,
-                                  Component buttonText, Button.OnPress press) {
-        addRenderableWidget(new PanelWidget(x, y - 2, w, 38, title, description));
-        addRenderableWidget(Button.builder(buttonText, press).bounds(x + w - 145, y + 5, 132, 24).build());
+    private void buildComingSoon(int x, int y, int w) {
+        addHeader(category.toUpperCase(), "Settings for this category are coming next.", x + 22, y + 22);
+        addCard(x + 20, y + 72, w - 40, 70, category,
+                "This section is ready for the next SBE feature set.");
     }
 
-    private void addToggle(String name, boolean enabled, int x, int y, int w, Runnable action) {
-        addRenderableWidget(new PanelWidget(x, y - 2, w, 28, name, ""));
-        Button button = Button.builder(toggleText(name, enabled), b -> {
-            action.run();
-            boolean nowEnabled = name.equals("Pet Overlay") ? SkyblockExtrasClient.CONFIG.petOverlayEnabled
-                    : name.equals("Farming RNG") ? SkyblockExtrasClient.CONFIG.farmingRngEnabled
-                    : name.equals("Show Pet Icon") ? SkyblockExtrasClient.CONFIG.showPetIcon
-                    : name.equals("Show Pet Level") ? SkyblockExtrasClient.CONFIG.showPetLevel
-                    : name.equals("Show Pet Progress") ? SkyblockExtrasClient.CONFIG.showPetProgress
-                    : name.equals("Show Pet XP") ? SkyblockExtrasClient.CONFIG.showPetXp
-                    : name.equals("Show Overflow XP") ? SkyblockExtrasClient.CONFIG.showOverflowXp
-                    : name.equals("Show Pet Item") ? SkyblockExtrasClient.CONFIG.showPetItem
-                    : !enabled;
-            b.setMessage(toggleText(name, nowEnabled));
-            SkyblockExtrasClient.CONFIG.save();
-        }).bounds(x + w - 165, y, 155, 24).build();
-        addRenderableWidget(button);
+    private void addHeader(String title, String subtitle, int x, int y) {
+        addText(title, x, y, 0xFFF2F2F6);
+        addText(subtitle, x, y + 26, 0xFF9898A3);
+    }
+
+    private void addCard(int x, int y, int w, int h, String title, String description) {
+        addRenderableWidget(new CardWidget(x, y, w, h));
+        addText(title, x + 14, y + 14, 0xFFE8E8EE);
+        if (!description.isEmpty()) addText(description, x + 14, y + 38, 0xFF92929D);
+    }
+
+    private void addToggleCard(String title, String description, boolean enabled,
+                               int x, int y, int w, Runnable action) {
+        addCard(x, y, w, 54, title, description);
+        addToggleButton("", enabled, x + w - 104, y + 13, 90, action);
     }
 
     private void addItemToggle(String name, boolean enabled, int x, int y, int w, Runnable action) {
-        addRenderableWidget(new PanelWidget(x, y - 2, w, 28, name, ""));
-        Button button = Button.builder(toggleText("Enabled", enabled), b -> {
-            action.run();
-            boolean nowEnabled = name.equals("Epic Slug") ? SkyblockExtrasClient.CONFIG.epicSlug
-                    : name.equals("Legendary Slug") ? SkyblockExtrasClient.CONFIG.legendarySlug
-                    : SkyblockExtrasClient.CONFIG.harvestFeastDrops.getOrDefault(name, true);
-            b.setMessage(toggleText("Enabled", nowEnabled));
-            SkyblockExtrasClient.CONFIG.save();
-        }).bounds(x + w - 105, y, 95, 24).build();
-        addRenderableWidget(button);
+        addRenderableWidget(new CardWidget(x, y, w, 32));
+        addText(name, x + 12, y + 9, 0xFFDCDCE3);
+        addToggleButton("", enabled, x + w - 82, y + 4, 70, action);
     }
 
-    private void addCollapsible(String name, boolean enabled, boolean expanded, int x, int y, int w,
-                                Runnable expandAction, Runnable toggleAction) {
-        String arrow = expanded ? "▼ " : "▶ ";
-        addRenderableWidget(Button.builder(Component.literal(arrow + name), b -> expandAction.run())
-                .bounds(x, y, 150, 26).build());
-        addRenderableWidget(Button.builder(toggleText("Enabled", enabled), b -> {
-            toggleAction.run();
-            boolean nowEnabled = name.equals("Harvest Feast") ? SkyblockExtrasClient.CONFIG.harvestFeastEnabled
-                    : name.equals("Slugs") ? SkyblockExtrasClient.CONFIG.slugEnabled
-                    : SkyblockExtrasClient.CONFIG.dyesEnabled;
-            b.setMessage(toggleText("Enabled", nowEnabled));
-            SkyblockExtrasClient.CONFIG.save();
-        }).bounds(x + w - 120, y + 1, 110, 24).build());
+    private void addToggleButton(String label, boolean enabled, int x, int y, int w, Runnable action) {
+        addStyledButton((label.isEmpty() ? "" : label + "  ") + (enabled ? "ON" : "OFF"),
+                x, y, w, 24, enabled, action);
     }
 
-    private void addSliderVisual(String name, int x, int y, int w, String value) {
-        addRenderableWidget(new PanelWidget(x, y - 2, w, 28, name, ""));
-        addRenderableWidget(Button.builder(Component.literal("◀   " + value + "   ▶"), b -> { })
-                .bounds(x + w - 155, y, 145, 24).build());
+    private void addStyledButton(String text, int x, int y, int w, int h, boolean selected, Runnable action) {
+        this.addRenderableWidget(new StyledButton(x, y, w, h, Component.literal(text), selected, action));
     }
 
-    private void addSectionLabel(String text, int x, int y) {
-        addRenderableWidget(new LabelWidget(x, y, text, 0xFFB47CFF));
-    }
-
-    private void addDescription(String text, int x, int y) {
-        addRenderableWidget(new LabelWidget(x, y, text, 0xFF9C9CA6));
-    }
-
-    private Component toggleText(String name, boolean enabled) {
-        return Component.literal(name + ": " + (enabled ? "ON" : "OFF"));
+    private void addText(String text, int x, int y, int color) {
+        this.addRenderableWidget(new LabelWidget(x, y, text, color));
     }
 
     @Override
@@ -267,85 +259,103 @@ public class SbeScreen extends Screen {
     }
 
     private class BackgroundWidget extends AbstractWidget {
-        private BackgroundWidget(int x, int y, int width, int height) {
+        BackgroundWidget(int x, int y, int width, int height) {
             super(x, y, width, height, Component.empty());
-            this.active = false;
         }
 
         @Override
         protected void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-            graphics.fill(0, 0, SbeScreen.this.width, SbeScreen.this.height, 0xFF0F0F14);
-            graphics.fill(left - 5, top - 5, left + widthBox + 5, top + heightBox + 5, 0xFF101016);
-            graphics.outline(left - 5, top - 5, widthBox + 10, heightBox + 10, 0xFF34343E);
+            graphics.fill(0, 0, SbeScreen.this.width, SbeScreen.this.height, 0xFF08090D);
+            graphics.fill(left - 1, top - 1, left + widthBox + 1, top + heightBox + 1, 0xFF0D0E14);
+            graphics.outline(left - 1, top - 1, widthBox + 2, heightBox + 2, 0xFF7C35C7);
 
-            graphics.fill(left, top, left + widthBox, top + 54, 0xFF19191F);
-            graphics.outline(left, top, widthBox, 54, 0xFF34343E);
+            graphics.fill(left, top, left + widthBox, top + 62, 0xFF101117);
+            graphics.outline(left, top, widthBox, 62, 0xFF252733);
 
-            Component a = Component.literal("Skyblock Extras ").withStyle(ChatFormatting.GRAY);
-            Component b = Component.literal("0.1.2").withStyle(ChatFormatting.LIGHT_PURPLE);
-            Component c = Component.literal(" — configuration").withStyle(ChatFormatting.GRAY);
-            int titleX = left + 25;
-            int titleY = top + 19;
-            graphics.text(SbeScreen.this.font, a, titleX, titleY, 0xFFFFFFFF, false);
-            int tx = titleX + SbeScreen.this.font.width(a);
-            graphics.text(SbeScreen.this.font, b, tx, titleY, 0xFFFFFFFF, false);
-            graphics.text(SbeScreen.this.font, c, tx + SbeScreen.this.font.width(b), titleY, 0xFFFFFFFF, false);
+            graphics.text(SbeScreen.this.font, "SKYBLOCK EXTRAS", left + 24, top + 19, 0xFFF2F2F6, false);
+            graphics.text(SbeScreen.this.font, "0.1.2", left + 180, top + 19, 0xFFB45CFF, false);
+            graphics.text(SbeScreen.this.font, "— configuration", left + 216, top + 19, 0xFF8D8D98, false);
 
-            graphics.fill(left + 15, top + 70, left + 228, top + heightBox - 52, 0xFF15151B);
-            graphics.outline(left + 15, top + 70, 213, heightBox - 122, 0xFF34343E);
-            graphics.text(SbeScreen.this.font, "Categories", left + 83, top + 83, 0xFFB47CFF, false);
-
-            int selectedIndex = 0;
-            for (int i = 0; i < CATEGORIES.length; i++) {
-                if (CATEGORIES[i].equals(category)) {
-                    selectedIndex = i;
-                    break;
-                }
-            }
-            int highlightY = top + 93 + selectedIndex * 31;
-            graphics.fill(left + 20, highlightY - 2, left + 218, highlightY + 26, 0xFF292331);
-            graphics.fill(left + 20, highlightY - 2, left + 24, highlightY + 26, 0xFFB45CFF);
-
-            int contentLeft = left + 240;
-            graphics.fill(contentLeft, top + 70, left + widthBox - 15, top + heightBox - 52, 0xFF15151B);
-            graphics.outline(contentLeft, top + 70, widthBox - 255, heightBox - 122, 0xFF34343E);
-
-            if (category.equals("About")) drawAbout(graphics, contentLeft);
-            else if (category.equals("GUI")) drawContentHeader(graphics, contentLeft, "GUI & HUD");
-            else if (category.equals("Farming RNG")) drawContentHeader(graphics, contentLeft, "Farming RNG");
-            else if (category.equals("Pet")) drawContentHeader(graphics, contentLeft, "Pet Overlay");
-            else drawComingSoon(graphics, contentLeft, category);
-        }
-
-        private void drawContentHeader(GuiGraphicsExtractor graphics, int x, String title) {
-            graphics.text(SbeScreen.this.font, title, x + 20, top + 84, 0xFFFFFFFF, false);
-        }
-
-        private void drawAbout(GuiGraphicsExtractor graphics, int x) {
-            graphics.text(SbeScreen.this.font, "Skyblock Extras", x + 20, top + 84, 0xFFFFFFFF, false);
-            graphics.text(SbeScreen.this.font, "Client-side SkyBlock utilities for Minecraft 26.2.", x + 20, top + 113, 0xFFB0B0B8, false);
-            graphics.text(SbeScreen.this.font, "Use the categories to configure HUDs, RNG tracking and more.", x + 20, top + 132, 0xFFB0B0B8, false);
-            graphics.text(SbeScreen.this.font, "Version 0.1.2", x + 20, top + 171, 0xFFB47CFF, false);
-        }
-
-        private void drawComingSoon(GuiGraphicsExtractor graphics, int x, String title) {
-            graphics.text(SbeScreen.this.font, title, x + 20, top + 84, 0xFFFFFFFF, false);
-            graphics.text(SbeScreen.this.font, "Settings for this category are coming next.", x + 20, top + 113, 0xFF9C9CA6, false);
+            graphics.text(SbeScreen.this.font, "SBE", left + widthBox - 55, top + 20, 0xFFB45CFF, false);
         }
 
         @Override
         protected void updateWidgetNarration(NarrationElementOutput builder) { }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            return false;
+        }
+    }
+
+    private class PanelWidget extends AbstractWidget {
+        PanelWidget(int x, int y, int width, int height) {
+            super(x, y, width, height, Component.empty());
+        }
+
+        @Override
+        protected void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+            graphics.fill(getX(), getY(), getX() + width, getY() + height, 0xFF0D0F15);
+            graphics.outline(getX(), getY(), width, height, 0xFF282A36);
+        }
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput builder) { }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            return false;
+        }
+    }
+
+    private class SectionBackgroundWidget extends AbstractWidget {
+        SectionBackgroundWidget(int x, int y, int width, int height) {
+            super(x, y, width, height, Component.empty());
+        }
+
+        @Override
+        protected void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+            graphics.fill(getX(), getY(), getX() + width, getY() + height, 0xFF141620);
+            graphics.outline(getX(), getY(), width, height, 0xFF292B38);
+        }
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput builder) { }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            return false;
+        }
+    }
+
+    private class CardWidget extends AbstractWidget {
+        CardWidget(int x, int y, int width, int height) {
+            super(x, y, width, height, Component.empty());
+        }
+
+        @Override
+        protected void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+            graphics.fill(getX(), getY(), getX() + width, getY() + height, 0xFF151720);
+            graphics.outline(getX(), getY(), width, height, 0xFF272A36);
+        }
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput builder) { }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            return false;
+        }
     }
 
     private class LabelWidget extends AbstractWidget {
         private final String text;
         private final int color;
 
-        private LabelWidget(int x, int y, String text, int color) {
+        LabelWidget(int x, int y, String text, int color) {
             super(x, y, Math.max(1, SbeScreen.this.font.width(text) + 2), 18, Component.empty());
             this.text = text;
             this.color = color;
-            this.active = false;
         }
 
         @Override
@@ -355,31 +365,48 @@ public class SbeScreen extends Screen {
 
         @Override
         protected void updateWidgetNarration(NarrationElementOutput builder) { }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            return false;
+        }
     }
 
-    private class PanelWidget extends AbstractWidget {
-        private final String title;
-        private final String description;
+    private class StyledButton extends AbstractWidget {
+        private final Runnable action;
+        private final boolean selected;
 
-        private PanelWidget(int x, int y, int width, int height, String title, String description) {
-            super(x, y, width, height, Component.empty());
-            this.title = title;
-            this.description = description;
-            this.active = false;
+        StyledButton(int x, int y, int width, int height, Component message, boolean selected, Runnable action) {
+            super(x, y, width, height, message);
+            this.action = action;
+            this.selected = selected;
         }
 
         @Override
         protected void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-            graphics.fill(getX(), getY(), getX() + width, getY() + height, 0xFF202027);
-            graphics.outline(getX(), getY(), width, height, 0xFF30303A);
-            graphics.text(SbeScreen.this.font, title, getX() + 10, getY() + 8, 0xFFFFFFFF, false);
-            if (!description.isEmpty()) {
-                graphics.text(SbeScreen.this.font, description, getX() + 160, getY() + 8, 0xFF9C9CA6, false);
-            }
+            boolean hovered = isMouseOver(mouseX, mouseY);
+            int fill = selected ? 0xFF241B32 : (hovered ? 0xFF202230 : 0xFF171922);
+            int border = selected ? 0xFFB45CFF : (hovered ? 0xFF7440A0 : 0xFF303341);
+            graphics.fill(getX(), getY(), getX() + width, getY() + height, fill);
+            graphics.outline(getX(), getY(), width, height, border);
+            if (selected) graphics.fill(getX(), getY(), getX() + 3, getY() + height, 0xFFB45CFF);
+
+            int textWidth = SbeScreen.this.font.width(getMessage());
+            int tx = getX() + (width - textWidth) / 2;
+            int ty = getY() + (height - 8) / 2;
+            graphics.text(SbeScreen.this.font, getMessage(), tx, ty,
+                    selected ? 0xFFF4E8FF : 0xFFD9D9E2, false);
         }
 
         @Override
-        protected void updateWidgetNarration(NarrationElementOutput builder) { }
+        public void onClick(double mouseX, double mouseY) {
+            action.run();
+        }
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput builder) {
+            defaultButtonNarrationText(builder);
+        }
     }
 
     @Override
