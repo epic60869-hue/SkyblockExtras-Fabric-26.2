@@ -46,7 +46,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
                                         context.getSource().sendFeedback(
                                                 Component.literal("[SBE] Configuration reloaded."));
                                         return 1;
-                                    })
+                                    }))
             );
         });
 
