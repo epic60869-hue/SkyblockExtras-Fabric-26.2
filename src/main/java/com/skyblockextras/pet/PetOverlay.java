@@ -2,32 +2,33 @@ package com.skyblockextras.pet;
 
 import com.skyblockextras.config.SbeConfig;
 
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.network.chat.Component;
 
 public class PetOverlay {
 
     private final SbeConfig config;
 
-    /*
-     * Placeholder pet information.
-     *
-     * These values will later be populated from the
-     * actual SkyBlock pet data.
-     */
-    private String petName = "Golden Dragon";
-    private String petRarity = "LEGENDARY";
+    // Current pet data
+    private String petName = "No Pet";
+    private String petRarity = "";
+    private int petLevel = 1;
 
-    private int petLevel = 100;
-
-    private long currentXp = 0;
-    private long requiredXp = 0;
-    private long overflowXp = 0;
+    private long currentXp = 0L;
+    private long requiredXp = 0L;
+    private long overflowXp = 0L;
 
     private String petItem = "";
 
+    // Used to avoid unnecessary updates
+    private String lastDetectedPet = "";
+
+
+    // ============================================================
+    // CONSTRUCTOR
+    // ============================================================
 
     public PetOverlay(SbeConfig config) {
         this.config = config;
@@ -35,7 +36,31 @@ public class PetOverlay {
 
 
     // ============================================================
-    // HUD RENDERING
+    // TICK
+    // ============================================================
+
+    public void tick(Minecraft client) {
+
+        if (!config.petOverlayEnabled) {
+            return;
+        }
+
+        if (client == null || client.player == null) {
+            return;
+        }
+
+        /*
+         * Pet detection will be connected here.
+         *
+         * We deliberately don't guess pet information from random
+         * chat messages. The actual SkyBlock pet detection can be
+         * added without changing the rendering code below.
+         */
+    }
+
+
+    // ============================================================
+    // HUD RENDER
     // ============================================================
 
     public void render(
@@ -47,69 +72,54 @@ public class PetOverlay {
             return;
         }
 
-        Minecraft client =
-                Minecraft.getInstance();
+        Minecraft client = Minecraft.getInstance();
 
         if (client.player == null) {
             return;
         }
 
-
-        int x = config.petX;
-        int y = config.petY;
-
-
-        /*
-         * Use the configured scale.
-         */
         float scale = config.petScale;
 
         if (scale <= 0.0f) {
             scale = 1.0f;
         }
 
+        int x = config.petX;
+        int y = config.petY;
 
-        /*
-         * Save the matrix state before applying our scale.
-         */
-        var matrices = graphics.pose();
+        var pose = graphics.pose();
 
-        matrices.pushMatrix();
+        pose.pushMatrix();
 
-        matrices.translate(
+        pose.translate(
                 x,
                 y
         );
 
-        matrices.scale(
+        pose.scale(
                 scale,
                 scale
         );
 
 
-        int drawX = 0;
-        int drawY = 0;
+        // ========================================================
+        // CALCULATE SIZE
+        // ========================================================
+
+        int width = getOverlayWidth();
+        int height = getOverlayHeight();
 
 
         // ========================================================
         // BACKGROUND
         // ========================================================
 
-        /*
-         * Small transparent-style background.
-         *
-         * This gives the overlay a clean SkyBlock utility
-         * appearance without taking up too much space.
-         */
-        int width = getOverlayWidth();
-        int height = getOverlayHeight();
-
         graphics.fill(
-                drawX - 3,
-                drawY - 3,
-                drawX + width + 3,
-                drawY + height + 3,
-                0x90000000
+                -4,
+                -4,
+                width + 4,
+                height + 4,
+                0xB0000000
         );
 
 
@@ -117,136 +127,109 @@ public class PetOverlay {
         // PET ICON
         // ========================================================
 
-        int textX = drawX;
+        int textX = 0;
 
         if (config.showPetIcon) {
 
             /*
-             * Until the actual pet texture/item system is added,
-             * use a small placeholder square.
+             * Temporary icon placeholder.
+             *
+             * The actual SkyBlock pet item/icon will be connected
+             * once pet detection is implemented.
              */
             graphics.fill(
-                    drawX,
-                    drawY,
-                    drawX + 16,
-                    drawY + 16,
-                    0xFF555555
+                    0,
+                    0,
+                    16,
+                    16,
+                    0xFF444444
             );
 
             graphics.outline(
-                    drawX,
-                    drawY,
+                    0,
+                    0,
                     16,
                     16,
                     0xFFFFFFFF
             );
 
-            textX += 20;
+            textX = 20;
         }
 
 
         // ========================================================
-        // PET NAME / LEVEL
+        // PET NAME
         // ========================================================
 
-        StringBuilder nameLine =
-                new StringBuilder();
-
+        StringBuilder name = new StringBuilder();
 
         if (config.showPetLevel) {
 
-            nameLine.append(
-                    "[Lvl "
-            );
-
-            nameLine.append(
-                    petLevel
-            );
-
-            nameLine.append(
-                    "] "
-            );
+            name.append("[Lvl ");
+            name.append(petLevel);
+            name.append("] ");
         }
 
+        name.append(petName);
 
-        nameLine.append(
-                petName
-        );
+        if (!petRarity.isBlank()) {
 
-
-        if (petRarity != null &&
-                !petRarity.isBlank()) {
-
-            nameLine.append(
-                    " "
-            );
-
-            nameLine.append(
-                    petRarity
-            );
+            name.append(" ");
+            name.append(petRarity);
         }
 
 
         graphics.text(
                 client.font,
-                Component.literal(
-                        nameLine.toString()
-                ),
+                Component.literal(name.toString()),
                 textX,
-                drawY,
+                0,
                 0xFFFFFFFF,
                 true
         );
 
 
-        int nextY = drawY + 12;
+        int currentY = 12;
 
 
         // ========================================================
-        // XP PROGRESS
+        // XP PROGRESS BAR
         // ========================================================
 
         if (config.showPetProgress) {
 
-            int barWidth = 120;
+            int barWidth = 125;
             int barHeight = 5;
 
             float progress = getProgress();
 
-            /*
-             * Background.
-             */
+            // Background
             graphics.fill(
                     textX,
-                    nextY,
+                    currentY,
                     textX + barWidth,
-                    nextY + barHeight,
+                    currentY + barHeight,
                     0xFF333333
             );
 
-
-            /*
-             * Progress.
-             */
+            // Progress
             int progressWidth =
-                    (int) (
-                            barWidth *
-                            progress
+                    Math.round(
+                            barWidth * progress
                     );
 
             if (progressWidth > 0) {
 
                 graphics.fill(
                         textX,
-                        nextY,
+                        currentY,
                         textX + progressWidth,
-                        nextY + barHeight,
+                        currentY + barHeight,
                         0xFF55FF55
                 );
             }
 
-
-            nextY += 8;
+            currentY += 8;
         }
 
 
@@ -260,17 +243,15 @@ public class PetOverlay {
                     client.font,
                     Component.literal(
                             "XP: "
-                                    + formatNumber(
-                                    currentXp
-                            )
+                                    + formatNumber(currentXp)
                     ),
                     textX,
-                    nextY,
+                    currentY,
                     0xFFFFFFFF,
                     true
             );
 
-            nextY += 10;
+            currentY += 10;
         }
 
 
@@ -284,17 +265,15 @@ public class PetOverlay {
                     client.font,
                     Component.literal(
                             "Overflow: "
-                                    + formatNumber(
-                                    overflowXp
-                            )
+                                    + formatNumber(overflowXp)
                     ),
                     textX,
-                    nextY,
+                    currentY,
                     0xFFFFAA00,
                     true
             );
 
-            nextY += 10;
+            currentY += 10;
         }
 
 
@@ -303,36 +282,30 @@ public class PetOverlay {
         // ========================================================
 
         if (config.showPetItem &&
-                petItem != null &&
                 !petItem.isBlank()) {
 
             graphics.text(
                     client.font,
-                    Component.literal(
-                            petItem
-                    ),
+                    Component.literal(petItem),
                     textX,
-                    nextY,
+                    currentY,
                     0xFFAAAAAA,
                     true
             );
         }
 
 
-        /*
-         * Restore the matrix.
-         */
-        matrices.popMatrix();
+        pose.popMatrix();
     }
 
 
     // ============================================================
-    // PROGRESS
+    // XP PROGRESS
     // ============================================================
 
     private float getProgress() {
 
-        if (requiredXp <= 0) {
+        if (requiredXp <= 0L) {
             return 0.0f;
         }
 
@@ -340,15 +313,13 @@ public class PetOverlay {
                 (float) currentXp /
                 (float) requiredXp;
 
-        if (progress < 0.0f) {
-            return 0.0f;
-        }
-
-        if (progress > 1.0f) {
-            return 1.0f;
-        }
-
-        return progress;
+        return Math.max(
+                0.0f,
+                Math.min(
+                        1.0f,
+                        progress
+                )
+        );
     }
 
 
@@ -358,7 +329,13 @@ public class PetOverlay {
 
     private int getOverlayWidth() {
 
-        return 150;
+        int width = 125;
+
+        if (config.showPetIcon) {
+            width += 20;
+        }
+
+        return width;
     }
 
 
@@ -379,7 +356,6 @@ public class PetOverlay {
         }
 
         if (config.showPetItem &&
-                petItem != null &&
                 !petItem.isBlank()) {
 
             height += 10;
@@ -393,9 +369,7 @@ public class PetOverlay {
     // NUMBER FORMAT
     // ============================================================
 
-    private String formatNumber(
-            long number
-    ) {
+    private String formatNumber(long number) {
 
         if (number >= 1_000_000_000L) {
 
@@ -426,7 +400,7 @@ public class PetOverlay {
 
 
     // ============================================================
-    // PET DATA
+    // SET PET
     // ============================================================
 
     public void setPet(
@@ -447,9 +421,20 @@ public class PetOverlay {
             petRarity = rarity;
         }
 
-        petLevel = level;
+        petLevel = Math.max(
+                1,
+                level
+        );
+
+
+        lastDetectedPet =
+                petName;
     }
 
+
+    // ============================================================
+    // SET XP
+    // ============================================================
 
     public void setXp(
             long current,
@@ -457,30 +442,88 @@ public class PetOverlay {
             long overflow
     ) {
 
-        currentXp = Math.max(
-                0,
-                current
-        );
+        currentXp =
+                Math.max(
+                        0L,
+                        current
+                );
 
-        requiredXp = Math.max(
-                0,
-                required
-        );
+        requiredXp =
+                Math.max(
+                        0L,
+                        required
+                );
 
-        overflowXp = Math.max(
-                0,
-                overflow
-        );
+        overflowXp =
+                Math.max(
+                        0L,
+                        overflow
+                );
     }
 
 
-    public void setPetItem(
-            String item
-    ) {
+    // ============================================================
+    // SET PET ITEM
+    // ============================================================
+
+    public void setPetItem(String item) {
 
         petItem =
                 item == null
                         ? ""
                         : item;
+    }
+
+
+    // ============================================================
+    // CLEAR PET
+    // ============================================================
+
+    public void clearPet() {
+
+        petName = "No Pet";
+        petRarity = "";
+        petLevel = 1;
+
+        currentXp = 0L;
+        requiredXp = 0L;
+        overflowXp = 0L;
+
+        petItem = "";
+
+        lastDetectedPet = "";
+    }
+
+
+    // ============================================================
+    // GETTERS
+    // ============================================================
+
+    public String getPetName() {
+        return petName;
+    }
+
+    public String getPetRarity() {
+        return petRarity;
+    }
+
+    public int getPetLevel() {
+        return petLevel;
+    }
+
+    public long getCurrentXp() {
+        return currentXp;
+    }
+
+    public long getRequiredXp() {
+        return requiredXp;
+    }
+
+    public long getOverflowXp() {
+        return overflowXp;
+    }
+
+    public String getPetItem() {
+        return petItem;
     }
 }
