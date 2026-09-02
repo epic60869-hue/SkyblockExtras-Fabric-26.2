@@ -14,14 +14,13 @@ import net.minecraft.network.chat.Component;
 import java.util.function.BooleanSupplier;
 
 /**
- * Classic SkyBlock-style configuration screen for SBE.
- * The layout intentionally uses a compact, old-school config-panel look:
- * centered window, category column, bordered settings panel and small controls.
+ * Compact classic SkyBlock-style configuration screen.
  */
 public class SbeScreen extends Screen {
     private final Screen parent;
 
-    private String category = "Farming RNG";
+    // /sbe always starts on About. The user can then select Farming RNG from the sidebar.
+    private String category = "About";
     private int left, top, widthBox, heightBox;
     private int contentX, contentY, contentW, contentH;
 
@@ -30,7 +29,7 @@ public class SbeScreen extends Screen {
     private boolean dyesExpanded = false;
 
     private static final String[] CATEGORIES = {
-            "About", "GUI", "Inventory", "Chat", "Bazaar", "Hunting", "Pet", "Misc"
+            "About", "GUI", "Farming RNG", "Pet"
     };
 
     private static final String[] HARVEST_FEAST_DROPS = {
@@ -55,24 +54,23 @@ public class SbeScreen extends Screen {
     protected void rebuildWidgets() {
         clearWidgets();
 
-        // Similar proportions to the reference: a centered, relatively small config window.
+        // Compact dimensions so the complete settings window fits on normal screens.
         widthBox = Math.min(930, width - 24);
-        heightBox = Math.min(740, height - 24);
+        heightBox = Math.min(700, height - 24);
         left = (width - widthBox) / 2;
         top = (height - heightBox) / 2;
 
         addRenderableWidget(new BackgroundWidget(left, top, widthBox, heightBox));
+        addRenderableWidget(new SearchIconWidget(left + widthBox - 45, top + 12, 28, 28));
 
-        // Header.
-        addRenderableWidget(new SearchIconWidget(left + widthBox - 52, top + 18, 30, 30));
-
-        // Category column.
+        // Sidebar: only the four currently implemented categories.
         int sideX = left + 8;
         int sideY = top + 54;
         int sideW = 246;
         int sideH = heightBox - 62;
         addRenderableWidget(new PanelWidget(sideX, sideY, sideW, sideH));
-        addText("Categories", sideX + (sideW - font.width("Categories")) / 2, sideY + 17, 0xFFB86AF0);
+        addText("Categories", sideX + (sideW - font.width("Categories")) / 2,
+                sideY + 17, 0xFFB86AF0);
 
         for (int i = 0; i < CATEGORIES.length; i++) {
             final String selected = CATEGORIES[i];
@@ -87,7 +85,6 @@ public class SbeScreen extends Screen {
             ));
         }
 
-        // Main settings panel.
         contentX = left + 252;
         contentY = top + 54;
         contentW = widthBox - 260;
@@ -97,9 +94,9 @@ public class SbeScreen extends Screen {
         switch (category) {
             case "About" -> buildAbout();
             case "GUI" -> buildGui();
-            case "Inventory", "Chat", "Bazaar", "Hunting", "Misc" -> buildComingSoon();
+            case "Farming RNG" -> buildFarming();
             case "Pet" -> buildPet();
-            default -> buildFarming();
+            default -> buildAbout();
         }
 
         addRenderableWidget(new ActionButton(
@@ -133,19 +130,22 @@ public class SbeScreen extends Screen {
 
         addToggleCard("Pet Overlay", "Display the active pet information HUD.",
                 () -> SkyblockExtrasClient.CONFIG.petOverlayEnabled, x, y, w,
-                () -> toggle(() -> SkyblockExtrasClient.CONFIG.petOverlayEnabled = !SkyblockExtrasClient.CONFIG.petOverlayEnabled));
+                () -> toggle(() -> SkyblockExtrasClient.CONFIG.petOverlayEnabled =
+                        !SkyblockExtrasClient.CONFIG.petOverlayEnabled));
         y += 51;
 
         addCard(x, y, w, 55, "Position Editor (Keybind)",
                 "Press the configured key to open the Position Editor.");
         addText("Position Editor", x + 11, y + 12, 0xFFE5E5EA);
-        addRenderableWidget(new ActionButton(x + 12, y + 31, 92, 19, "OPEN EDITOR", false,
+        addRenderableWidget(new ActionButton(x + 12, y + 31, 92, 19,
+                "OPEN EDITOR", false,
                 () -> Minecraft.getInstance().gui.setScreen(new SbeScreen(this))));
         y += 63;
 
         addToggleCard("Farming RNG", "Show rare farming drops in chat with persistent timers.",
                 () -> SkyblockExtrasClient.CONFIG.farmingRngEnabled, x, y, w,
-                () -> toggle(() -> SkyblockExtrasClient.CONFIG.farmingRngEnabled = !SkyblockExtrasClient.CONFIG.farmingRngEnabled));
+                () -> toggle(() -> SkyblockExtrasClient.CONFIG.farmingRngEnabled =
+                        !SkyblockExtrasClient.CONFIG.farmingRngEnabled));
     }
 
     private void buildFarming() {
@@ -157,7 +157,8 @@ public class SbeScreen extends Screen {
 
         addToggleCard("Farming RNG", "Track rare farming drops.",
                 () -> SkyblockExtrasClient.CONFIG.farmingRngEnabled, x, y, w,
-                () -> toggle(() -> SkyblockExtrasClient.CONFIG.farmingRngEnabled = !SkyblockExtrasClient.CONFIG.farmingRngEnabled));
+                () -> toggle(() -> SkyblockExtrasClient.CONFIG.farmingRngEnabled =
+                        !SkyblockExtrasClient.CONFIG.farmingRngEnabled));
         y += 52;
 
         y = addSection("Harvest Feast", "Track Harvest Feast drops.",
@@ -167,7 +168,8 @@ public class SbeScreen extends Screen {
                     harvestExpanded = !harvestExpanded;
                     rebuildWidgets();
                 },
-                () -> toggle(() -> SkyblockExtrasClient.CONFIG.harvestFeastEnabled = !SkyblockExtrasClient.CONFIG.harvestFeastEnabled));
+                () -> toggle(() -> SkyblockExtrasClient.CONFIG.harvestFeastEnabled =
+                        !SkyblockExtrasClient.CONFIG.harvestFeastEnabled));
 
         if (harvestExpanded) {
             int gap = 5;
@@ -182,11 +184,13 @@ public class SbeScreen extends Screen {
                 int iy = y + row * rowH;
 
                 addItemToggle(item,
-                        () -> SkyblockExtrasClient.CONFIG.harvestFeastDrops.getOrDefault(item, true),
+                        () -> SkyblockExtrasClient.CONFIG.harvestFeastDrops
+                                .getOrDefault(item, true),
                         ix, iy, colW,
                         () -> toggle(() -> SkyblockExtrasClient.CONFIG.harvestFeastDrops.put(
                                 item,
-                                !SkyblockExtrasClient.CONFIG.harvestFeastDrops.getOrDefault(item, true)
+                                !SkyblockExtrasClient.CONFIG.harvestFeastDrops
+                                        .getOrDefault(item, true)
                         )));
             }
 
@@ -200,15 +204,18 @@ public class SbeScreen extends Screen {
                     slugsExpanded = !slugsExpanded;
                     rebuildWidgets();
                 },
-                () -> toggle(() -> SkyblockExtrasClient.CONFIG.slugEnabled = !SkyblockExtrasClient.CONFIG.slugEnabled));
+                () -> toggle(() -> SkyblockExtrasClient.CONFIG.slugEnabled =
+                        !SkyblockExtrasClient.CONFIG.slugEnabled));
 
         if (slugsExpanded) {
             addItemToggle("Epic Slug", () -> SkyblockExtrasClient.CONFIG.epicSlug,
                     x, y, w,
-                    () -> toggle(() -> SkyblockExtrasClient.CONFIG.epicSlug = !SkyblockExtrasClient.CONFIG.epicSlug));
+                    () -> toggle(() -> SkyblockExtrasClient.CONFIG.epicSlug =
+                            !SkyblockExtrasClient.CONFIG.epicSlug));
             addItemToggle("Legendary Slug", () -> SkyblockExtrasClient.CONFIG.legendarySlug,
                     x, y + 23, w,
-                    () -> toggle(() -> SkyblockExtrasClient.CONFIG.legendarySlug = !SkyblockExtrasClient.CONFIG.legendarySlug));
+                    () -> toggle(() -> SkyblockExtrasClient.CONFIG.legendarySlug =
+                            !SkyblockExtrasClient.CONFIG.legendarySlug));
             y += 48;
         }
 
@@ -219,7 +226,8 @@ public class SbeScreen extends Screen {
                     dyesExpanded = !dyesExpanded;
                     rebuildWidgets();
                 },
-                () -> toggle(() -> SkyblockExtrasClient.CONFIG.dyesEnabled = !SkyblockExtrasClient.CONFIG.dyesEnabled));
+                () -> toggle(() -> SkyblockExtrasClient.CONFIG.dyesEnabled =
+                        !SkyblockExtrasClient.CONFIG.dyesEnabled));
     }
 
     private int addSection(String title, String description, BooleanSupplier enabled,
@@ -265,12 +273,6 @@ public class SbeScreen extends Screen {
                 () -> toggle(() -> c.showPetItem = !c.showPetItem));
     }
 
-    private void buildComingSoon() {
-        addHeader(category, "Settings for this category are coming next.");
-        addCard(innerLeft(), contentY + 67, innerWidth(), 70,
-                category, "This section is ready for the next SBE feature set.");
-    }
-
     private void addHeader(String title, String subtitle) {
         int x = innerLeft();
         addText(title, x, contentY + 15, 0xFFE8E8EC);
@@ -293,13 +295,15 @@ public class SbeScreen extends Screen {
         addToggleButton("", enabled, x + w - 72, y + 11, 58, action);
     }
 
-    private void addItemToggle(String name, BooleanSupplier enabled, int x, int y, int w, Runnable action) {
+    private void addItemToggle(String name, BooleanSupplier enabled,
+                               int x, int y, int w, Runnable action) {
         addRenderableWidget(new CardWidget(x, y, w, 20));
         addText(name, x + 9, y + 5, 0xFFD7D7DE);
         addToggleButton("", enabled, x + w - 51, y + 1, 40, action);
     }
 
-    private void addToggleButton(String label, BooleanSupplier enabled, int x, int y, int w, Runnable action) {
+    private void addToggleButton(String label, BooleanSupplier enabled,
+                                 int x, int y, int w, Runnable action) {
         addRenderableWidget(new ToggleButton(x, y, w, 20, label, enabled, action));
     }
 
@@ -325,29 +329,24 @@ public class SbeScreen extends Screen {
 
         @Override
         protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
-            // Soft darkened world behind the configuration window.
             g.fill(0, 0, SbeScreen.this.width, SbeScreen.this.height, 0x990A0B10);
-
-            // Outer shadow and old-school double border.
             g.fill(left - 3, top - 3, left + widthBox + 3, top + heightBox + 3, 0xFF090A0F);
             g.fill(left - 1, top - 1, left + widthBox + 1, top + heightBox + 1, 0xFF24252B);
             g.fill(left, top, left + widthBox, top + heightBox, 0xFF15161B);
             g.outline(left, top, widthBox, heightBox, 0xFF303139);
 
-            // Header.
             g.fill(left + 5, top + 5, left + widthBox - 5, top + 45, 0xFF1B1C21);
             g.outline(left + 5, top + 5, widthBox - 10, 40, 0xFF0B0C10);
             g.horizontalLine(left + 5, left + widthBox - 5, top + 46, 0xFF34353C);
 
             String title = "Skyblock Extras 0.1.2";
             int tw = SbeScreen.this.font.width(title);
-            g.text(SbeScreen.this.font, title, left + (widthBox - tw) / 2, top + 17,
-                    0xFFB8B8C2, false);
-            g.text(SbeScreen.this.font, "by SBE", left + (widthBox + tw) / 2 + 7, top + 17,
-                    0xFFC276FF, false);
-
-            // Tiny footer line.
-            g.horizontalLine(left + 5, left + widthBox - 5, top + heightBox - 8, 0xFF34353C);
+            g.text(SbeScreen.this.font, title,
+                    left + (widthBox - tw) / 2, top + 17, 0xFFB8B8C2, false);
+            g.text(SbeScreen.this.font, "by SBE",
+                    left + (widthBox + tw) / 2 + 7, top + 17, 0xFFC276FF, false);
+            g.horizontalLine(left + 5, left + widthBox - 5,
+                    top + heightBox - 8, 0xFF34353C);
         }
 
         @Override
@@ -444,7 +443,8 @@ public class SbeScreen extends Screen {
         private final boolean selected;
         private final Runnable action;
 
-        CategoryButton(int x, int y, int w, int h, String text, boolean selected, Runnable action) {
+        CategoryButton(int x, int y, int w, int h, String text,
+                       boolean selected, Runnable action) {
             super(x, y, w, h, Component.literal(text));
             this.text = text;
             this.selected = selected;
@@ -459,14 +459,14 @@ public class SbeScreen extends Screen {
 
             g.fill(getX(), getY(), getX() + width, getY() + height, fill);
             g.outline(getX(), getY(), width, height, border);
-
             if (selected) {
                 g.fill(getX(), getY(), getX() + 3, getY() + height, 0xFFC276FF);
             }
 
             int tw = SbeScreen.this.font.width(text);
-            g.text(SbeScreen.this.font, text, getX() + (width - tw) / 2,
-                    getY() + 10, selected ? 0xFFE9D6F7 : 0xFFC9C9D2, false);
+            g.text(SbeScreen.this.font, text,
+                    getX() + (width - tw) / 2, getY() + 10,
+                    selected ? 0xFFE9D6F7 : 0xFFC9C9D2, false);
         }
 
         @Override
@@ -484,7 +484,8 @@ public class SbeScreen extends Screen {
         private final Runnable action;
         private final boolean accent;
 
-        ActionButton(int x, int y, int w, int h, String text, boolean accent, Runnable action) {
+        ActionButton(int x, int y, int w, int h, String text,
+                     boolean accent, Runnable action) {
             super(x, y, w, h, Component.literal(text));
             this.action = action;
             this.accent = accent;
@@ -500,7 +501,8 @@ public class SbeScreen extends Screen {
             g.outline(getX(), getY(), width, height, border);
 
             int tw = SbeScreen.this.font.width(getMessage());
-            g.text(SbeScreen.this.font, getMessage(), getX() + (width - tw) / 2,
+            g.text(SbeScreen.this.font, getMessage(),
+                    getX() + (width - tw) / 2,
                     getY() + (height - 8) / 2,
                     accent ? 0xFFEBDCF4 : 0xFFD9D9E0, false);
         }
@@ -539,13 +541,15 @@ public class SbeScreen extends Screen {
             float target = targetEnabled ? 1.0f : 0.0f;
 
             long now = System.nanoTime();
-            float dt = Math.min(0.05f, (now - lastFrameNanos) / 1_000_000_000.0f);
+            float dt = Math.min(0.05f,
+                    (now - lastFrameNanos) / 1_000_000_000.0f);
             lastFrameNanos = now;
 
-            // Smoothly slide the knob instead of instantly snapping it.
             float amount = Math.min(1.0f, dt * 12.0f);
             progress += (target - progress) * amount;
-            if (Math.abs(target - progress) < 0.002f) progress = target;
+            if (Math.abs(target - progress) < 0.002f) {
+                progress = target;
+            }
 
             boolean hover = isHovered();
             int bg = lerpColor(0xFF24252B, 0xFF8F4FD0, progress);
@@ -557,12 +561,14 @@ public class SbeScreen extends Screen {
 
             int travel = width - 17;
             int knob = getX() + 1 + Math.round(travel * progress);
-            g.fill(knob, getY() + 3, knob + 14, getY() + height - 3, 0xFFF2F2F5);
+            g.fill(knob, getY() + 3, knob + 14,
+                    getY() + height - 3, 0xFFF2F2F5);
 
             if (!label.isEmpty()) {
                 String text = label + "  " + (targetEnabled ? "ON" : "OFF");
                 int tw = SbeScreen.this.font.width(text);
-                g.text(SbeScreen.this.font, text, getX() - tw - 8, getY() + 6,
+                g.text(SbeScreen.this.font, text,
+                        getX() - tw - 8, getY() + 6,
                         0xFFBFC0C9, false);
             }
         }
