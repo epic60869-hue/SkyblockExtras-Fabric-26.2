@@ -83,34 +83,6 @@ public class SbeScreen extends Screen {
         return widthBox - 275;
     }
 
-    private Button toggleButton(String name, boolean enabled, int x, int y, int w, Runnable action) {
-        Button button = Button.builder(toggleText(name, enabled), b -> {
-            action.run();
-            b.setMessage(toggleText(name, enabledValue(name)));
-        }).bounds(x, y, w, 24).build();
-        return button;
-    }
-
-    private boolean enabledValue(String name) {
-        SbeConfig c = SkyblockExtrasClient.CONFIG;
-        return switch (name) {
-            case "Pet Overlay" -> c.petOverlayEnabled;
-            case "Show Pet Icon" -> c.showPetIcon;
-            case "Show Pet Level" -> c.showPetLevel;
-            case "Show Pet Progress" -> c.showPetProgress;
-            case "Show Pet XP" -> c.showPetXp;
-            case "Show Overflow XP" -> c.showOverflowXp;
-            case "Show Pet Item" -> c.showPetItem;
-            case "Farming RNG" -> c.farmingRngEnabled;
-            case "Harvest Feast" -> c.harvestFeastEnabled;
-            case "Epic Slug" -> c.epicSlug;
-            case "Legendary Slug" -> c.legendarySlug;
-            case "Slugs" -> c.slugEnabled;
-            case "Farming Dyes" -> c.dyesEnabled;
-            default -> false;
-        };
-    }
-
     private void addGuiControls() {
         SbeConfig c = SkyblockExtrasClient.CONFIG;
         int x = contentX() + 22;
@@ -120,8 +92,8 @@ public class SbeScreen extends Screen {
         addSectionLabel("GUI & HUD", x, y);
         addDescription("Configure overlays and the in-game position editor.", x, y + 20);
 
-        addSettingButton("Position / Size Editor", "Open the editor to drag HUD elements and scroll to resize.", x, y + 52, w,
-                Component.literal("Open with /sbe gui"), b -> { });
+        addSettingButton("Position / Size Editor", "Drag HUD elements and scroll to resize them.", x, y + 52, w,
+                Component.literal("/sbe gui"), b -> { });
 
         addToggle("Pet Overlay", c.petOverlayEnabled, x, y + 113, w, () -> c.petOverlayEnabled = !c.petOverlayEnabled);
         addToggle("Farming RNG", c.farmingRngEnabled, x, y + 145, w, () -> c.farmingRngEnabled = !c.farmingRngEnabled);
@@ -219,26 +191,27 @@ public class SbeScreen extends Screen {
 
     private void addSettingButton(String title, String description, int x, int y, int w,
                                   Component buttonText, Button.OnPress press) {
-        addRenderableWidget(Button.builder(buttonText, press).bounds(x + w - 145, y + 7, 132, 24).build());
-        addPanelText(title, description, x, y, w);
+        addRenderableWidget(new PanelWidget(x, y - 2, w, 38, title, description));
+        addRenderableWidget(Button.builder(buttonText, press).bounds(x + w - 145, y + 5, 132, 24).build());
     }
 
     private void addToggle(String name, boolean enabled, int x, int y, int w, Runnable action) {
+        addRenderableWidget(new PanelWidget(x, y - 2, w, 28, name, ""));
         Button button = Button.builder(toggleText(name, enabled), b -> {
             action.run();
             b.setMessage(toggleText(name, !enabled));
             SkyblockExtrasClient.CONFIG.save();
         }).bounds(x + w - 165, y, 155, 24).build();
         addRenderableWidget(button);
-        addPanelText(name, "Click to toggle this setting.", x, y - 1, w);
     }
 
     private void addItemToggle(String name, boolean enabled, int x, int y, int w, Runnable action) {
-        Button button = Button.builder(toggleText(name, enabled), b -> {
+        addRenderableWidget(new PanelWidget(x, y - 2, w, 28, name, ""));
+        Button button = Button.builder(toggleText("Enabled", enabled), b -> {
             action.run();
-            b.setMessage(toggleText(name, !enabled));
+            b.setMessage(toggleText("Enabled", !enabled));
             SkyblockExtrasClient.CONFIG.save();
-        }).bounds(x + w - 145, y, 135, 24).build();
+        }).bounds(x + w - 105, y, 95, 24).build();
         addRenderableWidget(button);
     }
 
@@ -255,7 +228,7 @@ public class SbeScreen extends Screen {
     }
 
     private void addSliderVisual(String name, int x, int y, int w, String value) {
-        addPanelText(name, "", x, y, w);
+        addRenderableWidget(new PanelWidget(x, y - 2, w, 28, name, ""));
         addRenderableWidget(Button.builder(Component.literal("◀   " + value + "   ▶"), b -> { })
                 .bounds(x + w - 155, y, 145, 24).build());
     }
@@ -266,10 +239,6 @@ public class SbeScreen extends Screen {
 
     private void addDescription(String text, int x, int y) {
         addRenderableWidget(new LabelWidget(x, y, text, 0xFF9C9CA6));
-    }
-
-    private void addPanelText(String title, String description, int x, int y, int w) {
-        addRenderableWidget(new PanelWidget(x, y - 2, w, 28, title, description));
     }
 
     private Component toggleText(String name, boolean enabled) {
@@ -348,8 +317,7 @@ public class SbeScreen extends Screen {
         }
 
         @Override
-        protected void updateWidgetNarration(NarrationElementOutput builder) {
-        }
+        protected void updateWidgetNarration(NarrationElementOutput builder) { }
     }
 
     private class LabelWidget extends AbstractWidget {
