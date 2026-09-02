@@ -8,6 +8,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 public class SbeScreen extends Screen {
@@ -55,11 +56,8 @@ public class SbeScreen extends Screen {
         top = (this.height - heightBox) / 2;
 
         addRenderableWidget(new BackgroundWidget(left, top, widthBox, heightBox));
-
-        // Header search box: decorative for now, ready for real filtering later.
         addRenderableWidget(new SearchWidget(left + widthBox - 300, top + 16, 276, 38));
 
-        // Sidebar.
         int sideX = left + 18;
         int sideY = top + 76;
         int sideW = 252;
@@ -77,7 +75,6 @@ public class SbeScreen extends Screen {
                     }));
         }
 
-        // Main panel.
         int contentX = left + 284;
         int contentY = top + 76;
         int contentW = widthBox - 302;
@@ -157,7 +154,8 @@ public class SbeScreen extends Screen {
                 int iy = yy + row * rowH;
                 boolean enabled = SkyblockExtrasClient.CONFIG.harvestFeastDrops.getOrDefault(item, true);
                 addItemToggle(item, enabled, ix, iy, colW,
-                        () -> toggle(() -> SkyblockExtrasClient.CONFIG.harvestFeastDrops.put(item, !SkyblockExtrasClient.CONFIG.harvestFeastDrops.getOrDefault(item, true))));
+                        () -> toggle(() -> SkyblockExtrasClient.CONFIG.harvestFeastDrops.put(item,
+                                !SkyblockExtrasClient.CONFIG.harvestFeastDrops.getOrDefault(item, true))));
             }
             yy += 9 * rowH + 12;
         }
@@ -266,7 +264,11 @@ public class SbeScreen extends Screen {
     }
 
     private class BackgroundWidget extends AbstractWidget {
-        BackgroundWidget(int x, int y, int width, int height) { super(x, y, width, height, Component.empty()); }
+        BackgroundWidget(int x, int y, int width, int height) {
+            super(x, y, width, height, Component.empty());
+            this.active = false;
+        }
+
         @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
             g.fill(0, 0, SbeScreen.this.width, SbeScreen.this.height, 0xFF07080D);
             g.fill(left - 1, top - 1, left + widthBox + 1, top + heightBox + 1, 0xFF0B0C12);
@@ -278,70 +280,101 @@ public class SbeScreen extends Screen {
             g.text(SbeScreen.this.font, "0.1.2", left + 183, top + 21, 0xFFC276FF, false);
             g.text(SbeScreen.this.font, "— configuration", left + 219, top + 21, 0xFF858894, false);
         }
+
         @Override protected void updateWidgetNarration(NarrationElementOutput b) { }
-        @Override public boolean mouseClicked(double x, double y, int button) { return false; }
     }
 
     private class SearchWidget extends AbstractWidget {
-        SearchWidget(int x, int y, int width, int height) { super(x, y, width, height, Component.literal("Search...")); }
+        SearchWidget(int x, int y, int width, int height) {
+            super(x, y, width, height, Component.literal("Search..."));
+            this.active = false;
+        }
+
         @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
             g.fill(getX(), getY(), getX() + width, getY() + height, 0xFF11131B);
-            g.outline(getX(), getY(), width, height, isHovered() ? 0xFF8A42D2 : 0xFF303342);
+            g.outline(getX(), getY(), width, height, 0xFF303342);
             g.text(SbeScreen.this.font, "Search...", getX() + 14, getY() + 14, 0xFF777B89, false);
             g.text(SbeScreen.this.font, "⌕", getX() + width - 25, getY() + 12, 0xFFB5B7C1, false);
         }
+
         @Override protected void updateWidgetNarration(NarrationElementOutput b) { }
-        @Override public boolean mouseClicked(double x, double y, int button) { return false; }
     }
 
     private class PanelWidget extends AbstractWidget {
         private final boolean border;
-        PanelWidget(int x, int y, int width, int height, boolean border) { super(x, y, width, height, Component.empty()); this.border = border; }
+
+        PanelWidget(int x, int y, int width, int height, boolean border) {
+            super(x, y, width, height, Component.empty());
+            this.border = border;
+            this.active = false;
+        }
+
         @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
             g.fill(getX(), getY(), getX() + width, getY() + height, 0xFF0C0E14);
             if (border) g.outline(getX(), getY(), width, height, 0xFF252936);
         }
+
         @Override protected void updateWidgetNarration(NarrationElementOutput b) { }
-        @Override public boolean mouseClicked(double x, double y, int button) { return false; }
     }
 
     private class SectionWidget extends AbstractWidget {
-        private final String title, description;
-        private final boolean expanded;
         SectionWidget(int x, int y, int w, int h, String title, String description, boolean expanded) {
-            super(x, y, w, h, Component.empty()); this.title = title; this.description = description; this.expanded = expanded;
+            super(x, y, w, h, Component.empty());
+            this.active = false;
         }
+
         @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
             g.fill(getX(), getY(), getX() + width, getY() + height, 0xFF11131C);
             g.outline(getX(), getY(), width, height, 0xFF272A38);
         }
+
         @Override protected void updateWidgetNarration(NarrationElementOutput b) { }
-        @Override public boolean mouseClicked(double x, double y, int button) { return false; }
     }
 
     private class CardWidget extends AbstractWidget {
-        CardWidget(int x, int y, int w, int h) { super(x, y, w, h, Component.empty()); }
+        CardWidget(int x, int y, int w, int h) {
+            super(x, y, w, h, Component.empty());
+            this.active = false;
+        }
+
         @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
             g.fill(getX(), getY(), getX() + width, getY() + height, 0xFF12141D);
             g.outline(getX(), getY(), width, height, 0xFF272A38);
         }
+
         @Override protected void updateWidgetNarration(NarrationElementOutput b) { }
-        @Override public boolean mouseClicked(double x, double y, int button) { return false; }
     }
 
     private class LabelWidget extends AbstractWidget {
-        private final String text; private final int color;
-        LabelWidget(int x, int y, String text, int color) { super(x, y, Math.max(1, SbeScreen.this.font.width(text) + 2), 18, Component.empty()); this.text = text; this.color = color; }
-        @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) { g.text(SbeScreen.this.font, text, getX(), getY(), color, false); }
+        private final String text;
+        private final int color;
+
+        LabelWidget(int x, int y, String text, int color) {
+            super(x, y, Math.max(1, SbeScreen.this.font.width(text) + 2), 18, Component.empty());
+            this.text = text;
+            this.color = color;
+            this.active = false;
+        }
+
+        @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
+            g.text(SbeScreen.this.font, text, getX(), getY(), color, false);
+        }
+
         @Override protected void updateWidgetNarration(NarrationElementOutput b) { }
-        @Override public boolean mouseClicked(double x, double y, int button) { return false; }
     }
 
     private class CategoryButton extends AbstractWidget {
-        private final String text; private final boolean selected; private final Runnable action;
+        private final String text;
+        private final boolean selected;
+        private final Runnable action;
+
         CategoryButton(int x, int y, int w, int h, String text, boolean selected, Runnable action) {
-            super(x, y, w, h, Component.literal(text)); this.text = text; this.selected = selected; this.action = action;
+            super(x, y, w, h, Component.literal(text));
+            this.text = text;
+            this.selected = selected;
+            this.action = action;
         }
+
         @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
             boolean hover = isHovered();
             int fill = selected ? 0xFF20182B : (hover ? 0xFF151824 : 0xFF10121A);
@@ -349,17 +382,29 @@ public class SbeScreen extends Screen {
             g.fill(getX(), getY(), getX() + width, getY() + height, fill);
             g.outline(getX(), getY(), width, height, border);
             if (selected) g.fill(getX(), getY(), getX() + 4, getY() + height, 0xFFC276FF);
-            g.text(SbeScreen.this.font, text, getX() + 14, getY() + 13, selected ? 0xFFF0DFFF : 0xFFD9D9E1, false);
+            g.text(SbeScreen.this.font, text, getX() + 14, getY() + 13,
+                    selected ? 0xFFF0DFFF : 0xFFD9D9E1, false);
         }
-        @Override public void onClick(double x, double y) { action.run(); }
-        @Override protected void updateWidgetNarration(NarrationElementOutput b) { defaultButtonNarrationText(b); }
+
+        @Override public void onClick(MouseButtonEvent event, boolean doubleClick) {
+            action.run();
+        }
+
+        @Override protected void updateWidgetNarration(NarrationElementOutput b) {
+            defaultButtonNarrationText(b);
+        }
     }
 
     private class ActionButton extends AbstractWidget {
-        private final Runnable action; private final boolean accent;
+        private final Runnable action;
+        private final boolean accent;
+
         ActionButton(int x, int y, int w, int h, String text, boolean accent, Runnable action) {
-            super(x, y, w, h, Component.literal(text)); this.action = action; this.accent = accent;
+            super(x, y, w, h, Component.literal(text));
+            this.action = action;
+            this.accent = accent;
         }
+
         @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
             boolean hover = isHovered();
             int fill = accent ? 0xFF2A1A3B : (hover ? 0xFF242631 : 0xFF171922);
@@ -367,18 +412,31 @@ public class SbeScreen extends Screen {
             g.fill(getX(), getY(), getX() + width, getY() + height, fill);
             g.outline(getX(), getY(), width, height, border);
             int tw = SbeScreen.this.font.width(getMessage());
-            g.text(SbeScreen.this.font, getMessage(), getX() + (width - tw) / 2, getY() + (height - 8) / 2,
-                    accent ? 0xFFF2E6FF : 0xFFE0E0E7, false);
+            g.text(SbeScreen.this.font, getMessage(), getX() + (width - tw) / 2,
+                    getY() + (height - 8) / 2, accent ? 0xFFF2E6FF : 0xFFE0E0E7, false);
         }
-        @Override public void onClick(double x, double y) { action.run(); }
-        @Override protected void updateWidgetNarration(NarrationElementOutput b) { defaultButtonNarrationText(b); }
+
+        @Override public void onClick(MouseButtonEvent event, boolean doubleClick) {
+            action.run();
+        }
+
+        @Override protected void updateWidgetNarration(NarrationElementOutput b) {
+            defaultButtonNarrationText(b);
+        }
     }
 
     private class ToggleButton extends AbstractWidget {
-        private final String label; private final boolean enabled; private final Runnable action;
+        private final String label;
+        private final boolean enabled;
+        private final Runnable action;
+
         ToggleButton(int x, int y, int w, int h, String label, boolean enabled, Runnable action) {
-            super(x, y, w, h, Component.literal(label)); this.label = label; this.enabled = enabled; this.action = action;
+            super(x, y, w, h, Component.literal(label));
+            this.label = label;
+            this.enabled = enabled;
+            this.action = action;
         }
+
         @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
             boolean hover = isHovered();
             int bg = enabled ? 0xFF9A4DE0 : 0xFF242630;
@@ -393,8 +451,14 @@ public class SbeScreen extends Screen {
                 g.text(SbeScreen.this.font, text, getX() - tw - 10, getY() + 7, 0xFFBFC0CA, false);
             }
         }
-        @Override public void onClick(double x, double y) { action.run(); }
-        @Override protected void updateWidgetNarration(NarrationElementOutput b) { defaultButtonNarrationText(b); }
+
+        @Override public void onClick(MouseButtonEvent event, boolean doubleClick) {
+            action.run();
+        }
+
+        @Override protected void updateWidgetNarration(NarrationElementOutput b) {
+            defaultButtonNarrationText(b);
+        }
     }
 
     @Override
