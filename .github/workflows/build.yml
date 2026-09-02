@@ -28,5 +28,6 @@ jobs:
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
-          name: skyblock-extras
+          name: SkyblockExtras
           path: build/libs/*.jar
+          if-no-files-found: error
