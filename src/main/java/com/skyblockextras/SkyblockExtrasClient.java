@@ -24,164 +24,60 @@ public class SkyblockExtrasClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-
-        // =========================================================
-        // LOAD SBE CONFIGURATION
-        // =========================================================
-
         CONFIG = SbeConfig.load();
-
-        // =========================================================
-        // INITIALISE SBE SYSTEMS
-        // =========================================================
-
         RNG = new RngTracker(CONFIG);
         PET = new PetOverlay(CONFIG);
 
-        // =========================================================
-        // SBE CLIENT COMMAND
-        //
-        // /sbe
-        // /sbe gui
-        // /sbe reload
-        // =========================================================
+        System.out.println("[SBE] Registering client commands...");
 
-        ClientCommandRegistrationCallback.EVENT.register(
-                (dispatcher, buildContext) -> {
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> {
+            System.out.println("[SBE] Client command dispatcher initialized.");
 
-                    dispatcher.register(
-                            ClientCommands.literal("sbe")
-
-                                    // -------------------------------------------------
-                                    // /sbe
-                                    // -------------------------------------------------
-
+            dispatcher.register(
+                    ClientCommands.literal("sbe")
+                            .executes(context -> openSettings(context.getSource().getClient()))
+                            .then(ClientCommands.literal("gui")
+                                    .executes(context -> openSettings(context.getSource().getClient())))
+                            .then(ClientCommands.literal("reload")
                                     .executes(context -> {
-
-                                        Minecraft.getInstance().gui.setScreen(
-                                                new SbeScreen(null)
-                                        );
-
+                                        CONFIG = SbeConfig.load();
+                                        RNG = new RngTracker(CONFIG);
+                                        PET = new PetOverlay(CONFIG);
+                                        context.getSource().sendFeedback(
+                                                Component.literal("[SBE] Configuration reloaded."));
                                         return 1;
                                     })
+            );
+        });
 
-                                    // -------------------------------------------------
-                                    // /sbe gui
-                                    // -------------------------------------------------
-
-                                    .then(
-                                            ClientCommands.literal("gui")
-                                                    .executes(context -> {
-
-                                                        Minecraft.getInstance().gui.setScreen(
-                                                                new SbeScreen(null)
-                                                        );
-
-                                                        return 1;
-                                                    })
-                                    )
-
-                                    // -------------------------------------------------
-                                    // /sbe reload
-                                    // -------------------------------------------------
-
-                                    .then(
-                                            ClientCommands.literal("reload")
-                                                    .executes(context -> {
-
-                                                        CONFIG = SbeConfig.load();
-
-                                                        RNG = new RngTracker(CONFIG);
-
-                                                        PET = new PetOverlay(CONFIG);
-
-                                                        Minecraft minecraft =
-                                                                Minecraft.getInstance();
-
-                                                        if (minecraft.player != null) {
-
-                                                            minecraft.player.sendSystemMessage(
-                                                                    Component.literal(
-                                                                            "[SBE] Configuration reloaded."
-                                                                    )
-                                                            );
-                                                        }
-
-                                                        return 1;
-                                                    })
-                                    )
-                    );
-                }
-        );
-
-        // =========================================================
-        // GAME / SYSTEM MESSAGES
-        // =========================================================
-
-        ClientReceiveMessageEvents.GAME.register(
-                (message, overlay) -> {
-
-                    if (message == null) {
-                        return;
-                    }
-
-                    Minecraft minecraft = Minecraft.getInstance();
-
-                    if (minecraft.player == null) {
-                        return;
-                    }
-
-                    // Don't process overlay messages.
-                    if (overlay) {
-                        return;
-                    }
-
-                    if (RNG != null) {
-                        RNG.handle(message);
-                    }
-                }
-        );
-
-        // =========================================================
-        // CHAT MESSAGES
-        // =========================================================
+        ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+            if (message == null || overlay) return;
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.player == null) return;
+            if (RNG != null) RNG.handle(message);
+        });
 
         ClientReceiveMessageEvents.CHAT.register(
                 (message, signedMessage, sender, params, receptionTimestamp) -> {
-
-                    if (message == null) {
-                        return;
-                    }
-
+                    if (message == null) return;
                     Minecraft minecraft = Minecraft.getInstance();
-
-                    if (minecraft.player == null) {
-                        return;
-                    }
-
-                    if (RNG != null) {
-                        RNG.handle(message);
-                    }
+                    if (minecraft.player == null) return;
+                    if (RNG != null) RNG.handle(message);
                 }
         );
 
-        // =========================================================
-        // CLIENT TICK
-        // =========================================================
-
-        ClientTickEvents.END_CLIENT_TICK.register(
-                client -> {
-
-                    if (PET != null) {
-                        PET.tick(client);
-                    }
-                }
-        );
-
-        // =========================================================
-        // INITIALISATION COMPLETE
-        // =========================================================
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (PET != null) PET.tick(client);
+        });
 
         System.out.println("[SBE] Skyblock Extras initialized.");
+    }
+
+    private static int openSettings(Minecraft minecraft) {
+        if (minecraft == null) return 0;
+
+        System.out.println("[SBE] /sbe executed - opening settings GUI.");
+        minecraft.gui.setScreen(new SbeScreen(null));
+        return 1;
     }
 }
