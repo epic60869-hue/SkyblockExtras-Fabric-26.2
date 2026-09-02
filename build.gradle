@@ -7,7 +7,7 @@ version = project.mod_version
 group = project.maven_group
 
 base {
-    archivesName = "skyblock-extras"
+    archivesName = project.archives_base_name
 }
 
 repositories {
@@ -20,9 +20,8 @@ repositories {
 
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    mappings loom.officialMojangMappings()
-    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
 
 processResources {
@@ -45,7 +44,7 @@ java {
 
 jar {
     from("LICENSE") {
-        rename { "${it}_skyblock-extras" }
+        rename { "${it}_${project.archives_base_name}" }
     }
 }
 
