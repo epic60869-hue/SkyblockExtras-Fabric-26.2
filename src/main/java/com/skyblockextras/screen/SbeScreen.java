@@ -33,7 +33,8 @@ public class SbeScreen extends Screen {
         rebuildWidgets();
     }
 
-    private void rebuildWidgets() {
+    @Override
+protected void rebuildWidgets() {
         this.clearWidgets();
 
         widthBox = Math.min(930, this.width - 80);
