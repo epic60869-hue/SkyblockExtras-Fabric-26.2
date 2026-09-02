@@ -1,0 +1,68 @@
+name: Apply SBE UI patch
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[sbe-auto]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch SbeScreen.java
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/main/java/com/skyblockextras/screen/SbeScreen.java')
+          text = path.read_text(encoding='utf-8')
+
+          text = text.replace(
+              'private String category = "Farming RNG";',
+              'private String category = "About";'
+          )
+
+          old = '''    private static final String[] CATEGORIES = {
+            "About", "GUI", "Inventory", "Chat", "Bazaar", "Hunting", "Pet", "Misc"
+    };'''
+          new = '''    private static final String[] CATEGORIES = {
+            "About", "GUI", "Farming RNG", "Pet"
+    };'''
+
+          if old not in text:
+              raise SystemExit('Expected CATEGORIES block was not found')
+
+          text = text.replace(old, new, 1)
+
+          old_switch = '''            case "About" -> buildAbout();
+            case "GUI" -> buildGui();
+            case "Inventory", "Chat", "Bazaar", "Hunting", "Misc" -> buildComingSoon();
+            case "Pet" -> buildPet();
+            default -> buildFarming();'''
+          new_switch = '''            case "About" -> buildAbout();
+            case "GUI" -> buildGui();
+            case "Farming RNG" -> buildFarming();
+            case "Pet" -> buildPet();
+            default -> buildAbout();'''
+
+          if old_switch not in text:
+              raise SystemExit('Expected category switch was not found')
+
+          text = text.replace(old_switch, new_switch, 1)
+          path.write_text(text, encoding='utf-8')
+
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/sbe-ui-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main/java/com/skyblockextras/screen/SbeScreen.java .github/workflows/sbe-ui-patch.yml
+          git commit -m "Apply SBE UI category cleanup [sbe-auto]"
+          git push
