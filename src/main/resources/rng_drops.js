@@ -1,1 +1,52 @@
+const RNG_DROPS = {
+    farming: {
+        harvestFeast: [
+            "Aggourdian",
+            "Botroot",
+            "Cactus Flower",
+            "Cane Knot",
+            "Carrot Zest",
+            "Cornucopia",
+            "Cropie",
+            "Crystalized Moonlight",
+            "Deepfries",
+            "Designer Coffee Beans",
+            "Feastfungus",
+            "Fermento",
+            "Floral Gelatin",
+            "Helianthus",
+            "Melon Juice",
+            "Salted Sunflower Seeds",
+            "Squash"
+        ],
 
+        farmingDyes: [],
+
+        slugs: [
+            "Epic Slug",
+            "Legendary Slug"
+        ]
+    },
+
+    mining: {
+        rareDrops: [],
+        dyes: []
+    },
+
+    fishing: {
+        rareDrops: [],
+        dyes: []
+    },
+
+    combat: {
+        rareDrops: [],
+        dyes: []
+    },
+
+    other: {
+        rareDrops: [],
+        dyes: []
+    }
+};
+
+export default RNG_DROPS;
