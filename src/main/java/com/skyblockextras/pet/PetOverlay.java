@@ -1,25 +1,30 @@
 package com.skyblockextras.pet;
 
-import com.skyblockextras.config.SbeConfig;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 public class PetOverlay {
-    private final SbeConfig config;
 
-    public PetOverlay(SbeConfig config) {
-        this.config = config;
-    }
+    private boolean enabled = true;
 
     public void tick(Minecraft client) {
-        // Placeholder for Hypixel pet-data parsing.
-        // The renderer/editor is deliberately isolated so the pet parser can
-        // be expanded without changing the GUI code.
+        // Pet data handling will be implemented here.
     }
 
-    public void render(DrawContext context) {
-        if (!config.petOverlayEnabled) return;
-        // Render implementation is intentionally a framework stub for now.
-        // Pet data should be populated from Hypixel's visible pet/XP data.
+    public void render(GuiGraphicsExtractor graphics) {
+        if (!enabled) {
+            return;
+        }
+
+        // Temporary rendering placeholder.
+        // The actual pet overlay will be implemented here.
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
     }
 }
