@@ -10,6 +10,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /** Skysoft-inspired configuration screen for Skyblock Extras. */
@@ -17,6 +19,15 @@ public class SbeModernScreen extends Screen {
     private final Screen parent;
     private final String category;
     private int left, top, widthPanel, heightPanel;
+
+    private final List<AbstractWidget> scrollWidgets = new ArrayList<>();
+    private final List<Integer> scrollBaseY = new ArrayList<>();
+    private int scrollOffset = 0;
+    private int maxScroll = 0;
+    private int clipTop = 0;
+    private int clipBottom = 0;
+    private int clipLeft = 0;
+    private int clipRight = 0;
 
     private static final String[] CATEGORIES = {"About", "GUI", "Farming RNG", "Pet"};
     private static final String[] HARVEST = {
@@ -45,6 +56,9 @@ public class SbeModernScreen extends Screen {
         heightPanel = Math.min(680, height - 32);
         left = (width - widthPanel) / 2;
         top = (height - heightPanel) / 2;
+        scrollWidgets.clear();
+        scrollBaseY.clear();
+        scrollOffset = 0;
 
         addRenderableWidget(new BackgroundWidget());
         int sidebarX = left + 14;
@@ -74,7 +88,53 @@ public class SbeModernScreen extends Screen {
             case "Pet" -> buildPet(contentX, contentY, contentW, contentH);
             default -> buildAbout(contentX, contentY, contentW, contentH);
         }
+
+        setupContentScrolling(contentX, contentY + 62, contentW, contentH - 70);
         addRenderableWidget(new BottomButton(left + widthPanel - 105, top + heightPanel - 38, 88, 25, "Done", this::onClose));
+    }
+
+    private void setupContentScrolling(int x, int y, int w, int h) {
+        clipLeft = x;
+        clipRight = x + w;
+        clipTop = y;
+        clipBottom = y + h;
+
+        int maxBottom = clipTop;
+        for (Object child : children()) {
+            if (!(child instanceof AbstractWidget widget)) continue;
+            int wx = widget.getX();
+            int wy = widget.getY();
+            if (wx >= x && wx < x + w && wy >= y) {
+                scrollWidgets.add(widget);
+                scrollBaseY.add(wy);
+                maxBottom = Math.max(maxBottom, wy + widget.getHeight());
+            }
+        }
+
+        maxScroll = Math.max(0, maxBottom - clipBottom);
+        applyScroll();
+    }
+
+    private void applyScroll() {
+        for (int i = 0; i < scrollWidgets.size(); i++) {
+            AbstractWidget widget = scrollWidgets.get(i);
+            int newY = scrollBaseY.get(i) - scrollOffset;
+            widget.setY(newY);
+            widget.visible = newY + widget.getHeight() > clipTop && newY < clipBottom;
+        }
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (maxScroll > 0 && mouseX >= clipLeft && mouseX <= clipRight && mouseY >= clipTop && mouseY <= clipBottom) {
+            int amount = (int) Math.round(verticalAmount * 24.0);
+            if (amount != 0) {
+                scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - amount));
+                applyScroll();
+            }
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 
     private void buildAbout(int x, int y, int w, int h) {
@@ -88,7 +148,6 @@ public class SbeModernScreen extends Screen {
         SbeConfig c = SkyblockExtrasClient.CONFIG;
         addTitle(x, y, "GUI", "HUD visibility, background, scale and positioning");
         int cy = y + 69;
-
         addSetting(x + 16, cy, w - 32, 48, "Pet Overlay", "Display the active pet HUD.", () -> c.petOverlayEnabled,
                 () -> toggle(() -> c.petOverlayEnabled = !c.petOverlayEnabled));
         cy += 56;
@@ -101,14 +160,12 @@ public class SbeModernScreen extends Screen {
         addSetting(x + 16, cy, w - 32, 48, "RNG Background", "Show the panel behind RNG drop announcements.", () -> c.rngDropOverlayBackgroundEnabled,
                 () -> toggle(() -> c.rngDropOverlayBackgroundEnabled = !c.rngDropOverlayBackgroundEnabled));
         cy += 64;
-
         addEditorCard(x + 16, cy, w - 32, "Pet Overlay Position & Scale", "Drag the pet HUD and use the mouse wheel to resize it.",
                 "EDIT", () -> Minecraft.getInstance().gui.setScreen(new PositionEditorScreen(this)));
         cy += 72;
         addEditorCard(x + 16, cy, w - 32, "RNG Drop Position & Scale", "Drag the RNG announcement and use the mouse wheel to resize it.",
                 "EDIT", () -> Minecraft.getInstance().gui.setScreen(new RngDropPositionEditorScreen(this)));
         cy += 72;
-
         addCycleCard(x + 16, cy, w - 32, "RNG Price Formatting", "Choose how the drop price is displayed.",
                 () -> priceFormatLabel(c.rngDropPriceFormat), () -> cyclePriceFormat(c));
     }
