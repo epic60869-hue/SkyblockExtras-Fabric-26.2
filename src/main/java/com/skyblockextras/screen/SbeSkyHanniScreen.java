@@ -4,27 +4,20 @@ import com.skyblockextras.SkyblockExtrasClient;
 import com.skyblockextras.config.SbeConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
-import java.util.Locale;
-
-/** SkyHanni-inspired SBE configuration screen with properly clipped scrolling. */
+/** SkyHanni-inspired SBE configuration screen. */
 public class SbeSkyHanniScreen extends Screen {
-    private static final String[] CATEGORIES = {"About", "GUI", "Farming RNG", "Pet"};
-    private static final String[] HARVEST = {
-            "Aggourdian", "Botroot", "Cactus Flower", "Cane Knot", "Carrot Zest", "Cornucopia", "Cropie",
-            "Crystalized Moonlight", "Deepfries", "Designer Coffee Beans", "Feastfungus", "Fermento",
-            "Floral Gelatin", "Helianthus", "Melon Juice", "Salted Sunflower Seeds", "Squash"
-    };
-
+    private static final String[] CATEGORIES = {"About", "GUI", "Farming RNG", "Pet", "Discord Webhook"};
     private final Screen parent;
     private int selected;
     private int left, top, panelW, panelH;
     private int sidebarLeft, sidebarTop, sidebarWidth;
     private int contentLeft, contentTop, contentRight, contentBottom;
-    private int scroll, maxScroll;
+    private EditBox webhookBox;
 
     public SbeSkyHanniScreen(Screen parent) {
         super(Component.literal("Skyblock Extras"));
@@ -44,7 +37,11 @@ public class SbeSkyHanniScreen extends Screen {
         contentTop = top + 68;
         contentRight = left + panelW - 18;
         contentBottom = top + panelH - 54;
-        recalcScroll();
+        webhookBox = new EditBox(font, contentLeft + 30, contentTop + 130, contentRight - contentLeft - 60, 24, Component.literal("Discord Webhook URL"));
+        webhookBox.setMaxLength(300);
+        webhookBox.setValue(SkyblockExtrasClient.CONFIG == null ? "" : SkyblockExtrasClient.CONFIG.discordWebhookUrl);
+        webhookBox.setVisible(selected == 4);
+        addRenderableWidget(webhookBox);
     }
 
     @Override
@@ -54,16 +51,10 @@ public class SbeSkyHanniScreen extends Screen {
         g.outline(left, top, left + panelW, top + panelH, 0xFF30313A);
         g.text(font, Component.literal("SKYBLOCK EXTRAS"), left + 22, top + 17, 0xFFF1F1F4, true);
         g.text(font, Component.literal("Configuration"), left + 22, top + 34, 0xFF858690, false);
-
         drawSidebar(g, mouseX, mouseY);
         g.fill(contentLeft, contentTop, contentRight, contentBottom, 0xFF0F1014);
-        g.enableScissor(contentLeft, contentTop, contentRight, contentBottom);
         drawContent(g, mouseX, mouseY);
-        g.disableScissor();
-        drawScrollbar(g);
-
-        int doneX = left + panelW - 106;
-        int doneY = top + panelH - 40;
+        int doneX = left + panelW - 106, doneY = top + panelH - 40;
         button(g, doneX, doneY, 88, 26, "Done", mouseX >= doneX && mouseX <= doneX + 88 && mouseY >= doneY && mouseY <= doneY + 26);
     }
 
@@ -82,77 +73,67 @@ public class SbeSkyHanniScreen extends Screen {
         }
     }
 
-    private void drawScrollbar(GuiGraphicsExtractor g) {
-        if (maxScroll <= 0) return;
-        int x = contentRight - 5;
-        int a = contentTop + 8;
-        int b = contentBottom - 8;
-        int track = b - a;
-        g.fill(x, a, x + 3, b, 0xFF25262D);
-        int thumb = Math.max(26, Math.round(track * (contentBottom - contentTop) / (float) contentHeight()));
-        int travel = Math.max(0, track - thumb);
-        int y = a + Math.round(travel * (scroll / (float) maxScroll));
-        g.fill(x, y, x + 3, y + thumb, 0xFF77707F);
-    }
-
     private void drawContent(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        int y = contentTop + 18 - scroll;
+        int y = contentTop + 18;
         String subtitle = switch (selected) {
             case 1 -> "HUD elements and visual positioning";
             case 2 -> "Persistent timers for rare farming drops";
             case 3 -> "Active pet display and overflow XP";
+            case 4 -> "Send one live RNG session message to Discord";
             default -> "Skyblock Extras configuration";
         };
         text(g, CATEGORIES[selected], contentLeft + 20, y, 0xFFF0F0F4, true);
         text(g, subtitle, contentLeft + 20, y + 20, 0xFF898A95, false);
         g.fill(contentLeft + 18, y + 42, contentRight - 18, y + 43, 0xFF2B2C34);
         y += 58;
-
+        SbeConfig c = SkyblockExtrasClient.CONFIG;
         if (selected == 0) {
             info(g, y, "Skyblock Extras", "Client-side SkyBlock utilities for Minecraft 26.2.", "v0.1.2");
-            info(g, y + 104, "Configuration", "Use the categories on the left to configure each feature.", "SBE");
-            info(g, y + 208, "GUI controls", "Drag overlays to reposition them and use the mouse wheel to scale.", "READY");
+            info(g, y + 104, "GUI controls", "Use the feature pages to configure overlays and tracking.", "READY");
+            info(g, y + 208, "Discord", "Optional direct webhook session tracking for RNG drops.", "WEBHOOK");
             return;
         }
-
-        SbeConfig c = SkyblockExtrasClient.CONFIG;
         if (selected == 1) {
             row(g, y, "Pet Overlay", "Display the currently equipped pet.", c.petOverlayEnabled); y += 56;
-            row(g, y, "Pet Background", "Show the background behind the pet display.", c.petBackgroundEnabled); y += 56;
+            row(g, y, "Pet Background", "Show the pet HUD background.", c.petBackgroundEnabled); y += 56;
             row(g, y, "RNG Drop Overlay", "Show a notification when a tracked RNG drop occurs.", c.rngDropOverlayEnabled); y += 56;
-            row(g, y, "RNG Background", "Show the background behind RNG announcements.", c.rngDropOverlayBackgroundEnabled); y += 56;
-            actionRow(g, y, "Pet Position & Scale", "Open the drag/scale editor.", "EDIT", mouseX, mouseY); y += 60;
-            actionRow(g, y, "RNG Position & Scale", "Open the drag/scale editor.", "EDIT", mouseX, mouseY); y += 60;
-            choiceRow(g, y, "RNG Price Formatting", "Click to cycle between price formats.", priceLabel(c.rngDropPriceFormat));
+            row(g, y, "RNG Background", "Show the RNG announcement background.", c.rngDropOverlayBackgroundEnabled); y += 56;
+            row(g, y, "Pet Icon", "Show the pet icon.", c.showPetIcon); y += 56;
+            row(g, y, "Pet Level", "Show the pet and overflow level.", c.showPetLevel); y += 56;
+            row(g, y, "Pet XP", "Show total pet XP.", c.showPetXp); y += 56;
+            row(g, y, "Pet Item", "Show the held pet item.", c.showPetItem);
             return;
         }
-
         if (selected == 2) {
             row(g, y, "Farming RNG", "Master switch for farming RNG tracking.", c.farmingRngEnabled); y += 56;
-            row(g, y, "Harvest Feast", "Track only the configured Feast drops.", c.harvestFeastEnabled); y += 56;
-            text(g, "HARVEST FEAST DROPS", contentLeft + 22, y + 4, 0xFF777883, true); y += 26;
-            int gridW = contentRight - contentLeft - 48;
-            int colW = (gridW - 8) / 2;
-            for (int i = 0; i < HARVEST.length; i++) {
-                int col = i % 2, rr = i / 2;
-                boolean on = c.harvestFeastDrops.getOrDefault(HARVEST[i], true);
-                pill(g, contentLeft + 22 + col * (colW + 8), y + rr * 29, colW, HARVEST[i], on);
-            }
-            y += ((HARVEST.length + 1) / 2) * 29 + 12;
-            row(g, y, "Slugs", "Track Epic and Legendary Slug drops.", c.slugEnabled); y += 56;
+            row(g, y, "Feast Drops", "Track all 17 Harvest Feast drops as one group.", c.harvestFeastEnabled); y += 56;
+            row(g, y, "Slugs", "Master switch for Slug drops.", c.slugEnabled); y += 56;
             row(g, y, "Epic Slug", "Track Epic Slug.", c.epicSlug); y += 56;
             row(g, y, "Legendary Slug", "Track Legendary Slug.", c.legendarySlug); y += 56;
             row(g, y, "Dyes", "Track configured farming-related dyes.", c.dyesEnabled);
             return;
         }
-
-        row(g, y, "Pet Overlay", "Display the currently equipped pet.", c.petOverlayEnabled); y += 56;
-        row(g, y, "Pet Background", "Toggle the HUD background.", c.petBackgroundEnabled); y += 56;
-        row(g, y, "Pet Icon", "Show the pet icon.", c.showPetIcon); y += 56;
-        row(g, y, "Pet Level", "Show the combined level, including overflow.", c.showPetLevel); y += 56;
-        row(g, y, "Level Progress", "Show progress to the next normal level.", c.showPetProgress); y += 56;
-        row(g, y, "Pet XP", "Show total pet XP.", c.showPetXp); y += 56;
-        row(g, y, "Pet Item", "Show the currently equipped pet item.", c.showPetItem);
+        if (selected == 3) {
+            row(g, y, "Pet Overlay", "Display the currently equipped pet.", c.petOverlayEnabled); y += 56;
+            row(g, y, "Pet Background", "Toggle the HUD background.", c.petBackgroundEnabled); y += 56;
+            row(g, y, "Pet Icon", "Show the actual pet icon when available.", c.showPetIcon); y += 56;
+            row(g, y, "Pet Level", "Show the combined normal/overflow level.", c.showPetLevel); y += 56;
+            row(g, y, "Level Progress", "Show progress toward the next level/overflow level.", c.showPetProgress); y += 56;
+            row(g, y, "Pet XP", "Show total pet XP.", c.showPetXp); y += 56;
+            row(g, y, "Pet Item", "Show the held pet item.", c.showPetItem);
+            return;
+        }
+        row(g, y, "Discord Webhook", "Enable the live RNG session message.", c.discordWebhookEnabled); y += 58;
+        text(g, "WEBHOOK URL", contentLeft + 30, y + 3, 0xFF777883, true);
+        text(g, "The URL is saved locally in your SBE config.", contentLeft + 30, y + 20, 0xFF898A95, false);
+        if (webhookBox != null) {
+            webhookBox.setPosition(contentLeft + 30, y + 36);
+            webhookBox.setVisible(true);
+        }
+        button(g, contentLeft + 30, y + 68, 100, 27, "Save", mouseX >= contentLeft + 30 && mouseX <= contentLeft + 130 && mouseY >= y + 68 && mouseY <= y + 95);
+        button(g, contentLeft + 140, y + 68, 100, 27, "Test", mouseX >= contentLeft + 140 && mouseX <= contentLeft + 240 && mouseY >= y + 68 && mouseY <= y + 95);
+        text(g, "The message updates instead of sending a new Discord message for every drop.", contentLeft + 30, y + 116, 0xFF777881, false);
+        text(g, "Session uptime starts when Minecraft launches and resets on restart.", contentLeft + 30, y + 134, 0xFF777881, false);
     }
 
     private void row(GuiGraphicsExtractor g, int y, String title, String desc, boolean value) {
@@ -160,21 +141,6 @@ public class SbeSkyHanniScreen extends Screen {
         text(g, title, contentLeft + 30, y + 8, 0xFFE5E5EA, true);
         text(g, desc, contentLeft + 30, y + 26, 0xFF898A95, false);
         toggle(g, contentRight - 62, y + 13, value);
-    }
-
-    private void actionRow(GuiGraphicsExtractor g, int y, String title, String desc, String label, int mouseX, int mouseY) {
-        card(g, y, 52);
-        text(g, title, contentLeft + 30, y + 9, 0xFFE5E5EA, true);
-        text(g, desc, contentLeft + 30, y + 28, 0xFF898A95, false);
-        int bx = contentRight - 82;
-        button(g, bx, y + 12, 68, 27, label, mouseX >= bx && mouseX <= bx + 68 && mouseY >= y + scroll + 12 && mouseY <= y + scroll + 39);
-    }
-
-    private void choiceRow(GuiGraphicsExtractor g, int y, String title, String desc, String value) {
-        card(g, y, 52);
-        text(g, title, contentLeft + 30, y + 9, 0xFFE5E5EA, true);
-        text(g, desc, contentLeft + 30, y + 28, 0xFF898A95, false);
-        text(g, value, contentRight - 88, y + 19, 0xFFC77DFF, false);
     }
 
     private void info(GuiGraphicsExtractor g, int y, String title, String desc, String badge) {
@@ -186,7 +152,6 @@ public class SbeSkyHanniScreen extends Screen {
     }
 
     private void card(GuiGraphicsExtractor g, int y, int h) {
-        if (y + h < contentTop || y > contentBottom) return;
         g.fill(contentLeft + 16, y, contentRight - 16, y + h, 0xFF1E1F25);
         g.outline(contentLeft + 16, y, contentRight - 16, y + h, 0xFF30313A);
     }
@@ -197,14 +162,6 @@ public class SbeSkyHanniScreen extends Screen {
         g.fill(on ? x + 21 : x + 3, y + 3, on ? x + 35 : x + 17, y + 17, on ? 0xFFE1C9EC : 0xFF85868E);
     }
 
-    private void pill(GuiGraphicsExtractor g, int x, int y, int w, String name, boolean on) {
-        if (y + 23 < contentTop || y > contentBottom) return;
-        g.fill(x, y, x + w, y + 23, 0xFF1A1B20);
-        g.outline(x, y, x + w, y + 23, on ? 0xFF68477B : 0xFF2D2E35);
-        text(g, name, x + 8, y + 7, on ? 0xFFDCC5E8 : 0xFF777881, false);
-        g.fill(x + w - 17, y + 7, x + w - 8, y + 16, on ? 0xFFC77DFF : 0xFF55565E);
-    }
-
     private void button(GuiGraphicsExtractor g, int x, int y, int w, int h, String label, boolean hover) {
         g.fill(x, y, x + w, y + h, hover ? 0xFF3A2947 : 0xFF30243B);
         g.outline(x, y, x + w, y + h, 0xFF69477F);
@@ -212,131 +169,73 @@ public class SbeSkyHanniScreen extends Screen {
     }
 
     private void text(GuiGraphicsExtractor g, String value, int x, int y, int color, boolean shadow) {
-        if (y >= contentTop - 14 && y <= contentBottom + 8) g.text(font, Component.literal(value), x, y, color, shadow);
-    }
-
-    private int contentHeight() {
-        return switch (selected) {
-            case 1 -> 58 + 4 * 56 + 2 * 60 + 52;
-            case 2 -> 58 + 2 * 56 + 26 + ((HARVEST.length + 1) / 2) * 29 + 12 + 4 * 56;
-            case 3 -> 58 + 7 * 56;
-            default -> 58 + 3 * 104;
-        };
-    }
-
-    private void recalcScroll() {
-        maxScroll = Math.max(0, contentHeight() - (contentBottom - contentTop));
-        scroll = Math.max(0, Math.min(scroll, maxScroll));
+        g.text(font, Component.literal(value), x, y, color, shadow);
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (mouseX >= contentLeft && mouseX <= contentRight && mouseY >= contentTop && mouseY <= contentBottom && maxScroll > 0) {
-            scroll = Math.max(0, Math.min(maxScroll, scroll - (int) Math.round(verticalAmount * 32.0)));
-            return true;
-        }
-        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
-    }
-
-    @Override
-    public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {
-        if (e.button() != 0) return super.mouseClicked(e, doubleClick);
-        double mx = e.x(), my = e.y();
-
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        double mx = event.x(), my = event.y();
+        if (event.button() != 0) return super.mouseClicked(event, doubleClick);
         for (int i = 0; i < CATEGORIES.length; i++) {
             int y = sidebarTop + 40 + i * 45;
             if (mx >= sidebarLeft + 7 && mx <= sidebarLeft + sidebarWidth - 7 && my >= y && my <= y + 34) {
                 selected = i;
-                scroll = 0;
-                recalcScroll();
+                if (webhookBox != null) webhookBox.setVisible(selected == 4);
                 return true;
             }
         }
-
-        int doneX = left + panelW - 106, doneY = top + panelH - 40;
-        if (mx >= doneX && mx <= doneX + 88 && my >= doneY && my <= doneY + 26) {
-            onClose();
-            return true;
-        }
-
-        if (mx < contentLeft || mx > contentRight || my < contentTop || my > contentBottom) return false;
-        double cy = my + scroll;
-        SbeConfig c = SkyblockExtrasClient.CONFIG;
         int y = contentTop + 76;
-
         if (selected == 1) {
-            if (hit(y, cy, 48)) { c.petOverlayEnabled = !c.petOverlayEnabled; c.save(); return true; }
-            y += 56;
-            if (hit(y, cy, 48)) { c.petBackgroundEnabled = !c.petBackgroundEnabled; c.save(); return true; }
-            y += 56;
-            if (hit(y, cy, 48)) { c.rngDropOverlayEnabled = !c.rngDropOverlayEnabled; c.save(); return true; }
-            y += 56;
-            if (hit(y, cy, 48)) { c.rngDropOverlayBackgroundEnabled = !c.rngDropOverlayBackgroundEnabled; c.save(); return true; }
-            y += 56;
-            if (hit(y, cy, 52)) { Minecraft.getInstance().gui.setScreen(new PositionEditorScreen(this)); return true; }
-            y += 60;
-            if (hit(y, cy, 52)) { Minecraft.getInstance().gui.setScreen(new RngDropPositionEditorScreen(this)); return true; }
-            y += 60;
-            if (hit(y, cy, 52)) { cyclePrice(c); return true; }
+            if (hit(mx,my,y)) { c().petOverlayEnabled=!c().petOverlayEnabled; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().petBackgroundEnabled=!c().petBackgroundEnabled; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().rngDropOverlayEnabled=!c().rngDropOverlayEnabled; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().rngDropOverlayBackgroundEnabled=!c().rngDropOverlayBackgroundEnabled; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().showPetIcon=!c().showPetIcon; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().showPetLevel=!c().showPetLevel; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().showPetXp=!c().showPetXp; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().showPetItem=!c().showPetItem; save(); return true; }
         } else if (selected == 2) {
-            if (hit(y, cy, 48)) { c.farmingRngEnabled = !c.farmingRngEnabled; c.save(); return true; }
-            y += 56;
-            if (hit(y, cy, 48)) { c.harvestFeastEnabled = !c.harvestFeastEnabled; c.save(); return true; }
-            y += 56 + 26;
-            int gridW = contentRight - contentLeft - 48, colW = (gridW - 8) / 2;
-            for (int i = 0; i < HARVEST.length; i++) {
-                int col = i % 2, rr = i / 2, xx = contentLeft + 22 + col * (colW + 8), yy = y + rr * 29;
-                if (mx >= xx && mx <= xx + colW && cy >= yy && cy <= yy + 23) {
-                    c.harvestFeastDrops.put(HARVEST[i], !c.harvestFeastDrops.getOrDefault(HARVEST[i], true));
-                    c.save();
-                    return true;
-                }
-            }
-            y += ((HARVEST.length + 1) / 2) * 29 + 12;
-            if (hit(y, cy, 48)) { c.slugEnabled = !c.slugEnabled; c.save(); return true; }
-            y += 56;
-            if (hit(y, cy, 48)) { c.epicSlug = !c.epicSlug; c.save(); return true; }
-            y += 56;
-            if (hit(y, cy, 48)) { c.legendarySlug = !c.legendarySlug; c.save(); return true; }
-            y += 56;
-            if (hit(y, cy, 48)) { c.dyesEnabled = !c.dyesEnabled; c.save(); return true; }
+            if (hit(mx,my,y)) { c().farmingRngEnabled=!c().farmingRngEnabled; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().harvestFeastEnabled=!c().harvestFeastEnabled; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().slugEnabled=!c().slugEnabled; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().epicSlug=!c().epicSlug; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().legendarySlug=!c().legendarySlug; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().dyesEnabled=!c().dyesEnabled; save(); return true; }
         } else if (selected == 3) {
-            for (int i = 0; i < 7; i++) {
-                if (!hit(y + i * 56, cy, 48)) continue;
-                switch (i) {
-                    case 0 -> c.petOverlayEnabled = !c.petOverlayEnabled;
-                    case 1 -> c.petBackgroundEnabled = !c.petBackgroundEnabled;
-                    case 2 -> c.showPetIcon = !c.showPetIcon;
-                    case 3 -> c.showPetLevel = !c.showPetLevel;
-                    case 4 -> c.showPetProgress = !c.showPetProgress;
-                    case 5 -> c.showPetXp = !c.showPetXp;
-                    case 6 -> c.showPetItem = !c.showPetItem;
-                }
-                c.save();
+            if (hit(mx,my,y)) { c().petOverlayEnabled=!c().petOverlayEnabled; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().petBackgroundEnabled=!c().petBackgroundEnabled; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().showPetIcon=!c().showPetIcon; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().showPetLevel=!c().showPetLevel; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().showPetProgress=!c().showPetProgress; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().showPetXp=!c().showPetXp; save(); return true; } y+=56;
+            if (hit(mx,my,y)) { c().showPetItem=!c().showPetItem; save(); return true; }
+        } else if (selected == 4) {
+            if (hit(mx,my,y)) { c().discordWebhookEnabled=!c().discordWebhookEnabled; save(); return true; }
+            y += 58;
+            int saveY = y + 68;
+            if (mx >= contentLeft+30 && mx <= contentLeft+130 && my >= saveY && my <= saveY+27) {
+                c().discordWebhookUrl = webhookBox.getValue().trim(); save();
+                if (SkyblockExtrasClient.DISCORD_WEBHOOK != null) SkyblockExtrasClient.DISCORD_WEBHOOK.resetForNewWebhook();
+                return true;
+            }
+            if (mx >= contentLeft+140 && mx <= contentLeft+240 && my >= saveY && my <= saveY+27) {
+                c().discordWebhookUrl = webhookBox.getValue().trim(); save();
+                if (SkyblockExtrasClient.DISCORD_WEBHOOK != null) SkyblockExtrasClient.DISCORD_WEBHOOK.test();
                 return true;
             }
         }
-        return false;
+        int doneX=left+panelW-106, doneY=top+panelH-40;
+        if (mx>=doneX && mx<=doneX+88 && my>=doneY && my<=doneY+26) { onClose(); return true; }
+        return super.mouseClicked(event, doubleClick);
     }
 
-    private boolean hit(double y, double my, double h) { return my >= y && my <= y + h; }
-
-    private void cyclePrice(SbeConfig c) {
-        c.rngDropPriceFormat = switch (priceLabel(c.rngDropPriceFormat)) {
-            case "SHORT" -> "FULL";
-            case "FULL" -> "COINS";
-            default -> "SHORT";
-        };
-        c.save();
-    }
-
-    private String priceLabel(String value) {
-        if (value == null) return "SHORT";
-        return switch (value.toUpperCase(Locale.ROOT)) { case "FULL" -> "FULL"; case "COINS" -> "COINS"; default -> "SHORT"; };
-    }
+    private SbeConfig c() { return SkyblockExtrasClient.CONFIG; }
+    private boolean hit(double x,double y,int rowY) { return x>=contentLeft+16 && x<=contentRight-16 && y>=rowY && y<=rowY+48; }
+    private void save() { if (c()!=null) c().save(); }
 
     @Override
     public void onClose() {
-        if (minecraft != null) minecraft.gui.setScreen(parent);
+        if (parent != null) Minecraft.getInstance().gui.setScreen(parent);
+        else Minecraft.getInstance().gui.setScreen(null);
     }
 }
