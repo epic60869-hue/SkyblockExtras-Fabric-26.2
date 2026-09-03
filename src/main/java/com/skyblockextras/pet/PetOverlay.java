@@ -1,10 +1,15 @@
 package com.skyblockextras.pet;
 
+import com.google.common.collect.ImmutableMultimap;
+import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.properties.Property;
+import com.mojang.authlib.properties.PropertyMap;
 import com.skyblockextras.config.SbeConfig;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -13,12 +18,16 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ResolvableProfile;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** SkyBlock pet HUD. Reads pet stats from TAB and resolves the real pet head from nearby Hypixel entities. */
+/** SkyBlock pet HUD. Reads pet stats from TAB and renders a real SkyBlock pet head. */
 public class PetOverlay {
     private final SbeConfig config;
     private String petName = "No Pet";
@@ -37,6 +46,9 @@ public class PetOverlay {
     private static final Pattern PET_LABEL_XP = Pattern.compile("(?i)pet\\s*xp\\s*[:：]\\s*([0-9,.]+(?:[kmb])?)(?:\\s*/\\s*([0-9,.]+(?:[kmb])?))?");
     private static final Pattern ITEM_PATTERN = Pattern.compile("(?i)(?:held item|pet item)\\s*[:：]\\s*(.+)");
     private static final Pattern ENTITY_LEVEL_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?");
+
+    /* Exact SkyBlock Rose Dragon head texture used by the pet display. */
+    private static final String ROSE_DRAGON_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTc2MTE3MzAyMjM0NywKICAicHJvZmlsZUlkIiA6ICJjOWI3OWY2OGEyZGY0YjA1ODUwOWRlMzg5YjM5ZDUyYyIsCiAgInByb2ZpbGVOYW1lIiA6ICJ3cmVlcGVyX2Jvb3AiLAogICJzaWduYXR1cmVSZXF1aXJlZCIgOiB0cnVlLAogICJ0ZXh0dXJlcyIgOiB7CiAgICAiU0tJTiIgOiB7CiAgICAgICJ1cmwiIDogImh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOWI3YzNkZTA3NWEyYmIyMzhlZjUxNDMxMjA2YjEwZDU4NmNiMmE1YjFjYzQxZmU4NTFjYzVmMGIwMmQzNTdjNyIsCiAgICAgICJtZXRhZGF0YSIgOiB7CiAgICAgICAgIm1vZGVsIiA6ICJzbGltIgogICAgICB9CiAgICB9CiAgfQp9";
 
     private static final String[] KNOWN_PETS = {
         "Alligator", "Ammonite", "Ankylosaurus", "Armadillo", "Baby Yeti", "Bal", "Bat", "Bee", "Black Cat",
@@ -99,19 +111,23 @@ public class PetOverlay {
         if (progress >= 0) tabProgress = progress;
     }
 
-    /**
-     * Resolve the real Hypixel pet head. Hypixel commonly renders the pet as a
-     * named living entity plus a nearby ArmorStand/head entity. We first anchor
-     * on an entity whose name contains the active pet name, then look for a
-     * player-head immediately around that anchor. If Hypixel does not expose a
-     * named anchor, we use a looser scored fallback so the icon does not vanish.
-     */
+    /** Resolve a real SkyBlock pet head, with a guaranteed texture-backed fallback for common pets. */
     private void resolveRealPetIcon(Minecraft client) {
         if (client.level == null || client.player == null || petName.equals("No Pet")) return;
 
-        // Best path: find a living entity named after the active pet, then find
-        // its actual player-head within a small radius. This avoids selecting a
-        // random nearby Slug/NPC just because it is closer to the player.
+        // For Rose Dragon, use the exact SkyBlock pet-head profile directly.
+        // This is independent of ArmorStand/entity rendering and therefore works
+        // even when Hypixel does not expose the pet's cosmetic head as an item.
+        if (petName.equalsIgnoreCase("Rose Dragon")) {
+            ItemStack rose = createTexturedHead(ROSE_DRAGON_TEXTURE, "Rose Dragon");
+            if (!rose.isEmpty()) {
+                resolvedPetIcon = rose;
+                resolvedIconKey = "profile:rose_dragon";
+                return;
+            }
+        }
+
+        // Other pets: find the rendered pet anchor and its player head.
         LivingEntity namedAnchor = null;
         double anchorDistance = Double.MAX_VALUE;
         for (Entity entity : client.level.entitiesForRendering()) {
@@ -129,30 +145,25 @@ public class PetOverlay {
         if (namedAnchor != null) {
             ItemStack anchored = findHeadNear(client, namedAnchor, 3.0D);
             if (!anchored.isEmpty()) {
-                String key = petName + "|" + petLevel + "|anchor|" + anchored.hashCode();
-                if (!key.equals(resolvedIconKey)) { resolvedPetIcon = anchored; resolvedIconKey = key; }
+                resolvedPetIcon = anchored;
+                resolvedIconKey = petName + "|anchor|" + anchored.hashCode();
                 return;
             }
         }
 
-        // Fallback: score every nearby player head. Do not reject by Y position;
-        // Hypixel's pet entity layout can vary between islands/areas.
         double maxDistance = 12.0D;
         var box = client.player.getBoundingBox().inflate(maxDistance);
         Entity bestEntity = null;
         ItemStack bestStack = ItemStack.EMPTY;
         double bestScore = Double.NEGATIVE_INFINITY;
-
         for (Entity entity : client.level.getEntities((Entity) null, box, Entity::isAlive)) {
             ItemStack head = ItemStack.EMPTY;
             boolean armorStand = entity instanceof ArmorStand;
             if (armorStand) head = ((ArmorStand) entity).getItemBySlot(EquipmentSlot.HEAD);
             else if (entity instanceof Display.ItemDisplay) head = ((Display.ItemDisplay) entity).getItemStack();
             if (!isUsablePetHead(head)) continue;
-
             double distanceSq = entity.distanceToSqr(client.player);
             if (distanceSq > maxDistance * maxDistance) continue;
-
             double score = 0.0D;
             if (entity instanceof LivingEntity living && living.getCustomName() != null) {
                 String custom = stripFormatting(living.getCustomName().getString()).toLowerCase(Locale.ROOT);
@@ -163,11 +174,7 @@ public class PetOverlay {
                 ArmorStand stand = (ArmorStand) entity;
                 String customName = stand.getCustomName() == null ? "" : stripFormatting(stand.getCustomName().getString());
                 Matcher levelMatcher = ENTITY_LEVEL_PATTERN.matcher(customName);
-                if (levelMatcher.find()) {
-                    int entityLevel = parseInt(levelMatcher.group(1));
-                    if (entityLevel == petLevel) score += 1500.0D;
-                    else score -= 1000.0D;
-                }
+                if (levelMatcher.find()) { int entityLevel = parseInt(levelMatcher.group(1)); if (entityLevel == petLevel) score += 1500.0D; else score -= 1000.0D; }
                 if (stand.isInvisible()) score += 500.0D;
                 if (stand.isMarker()) score += 350.0D;
                 if (stand.isSmall()) score += 150.0D;
@@ -178,10 +185,24 @@ public class PetOverlay {
             score -= distanceSq * 2.0D;
             if (score > bestScore) { bestScore = score; bestEntity = entity; bestStack = head.copy(); }
         }
-
         if (bestEntity != null && !bestStack.isEmpty()) {
-            String key = petName + "|" + petLevel + "|" + bestEntity.getId();
-            if (!key.equals(resolvedIconKey)) { resolvedPetIcon = bestStack; resolvedIconKey = key; }
+            resolvedPetIcon = bestStack;
+            resolvedIconKey = petName + "|" + petLevel + "|" + bestEntity.getId();
+        }
+    }
+
+    private ItemStack createTexturedHead(String textureValue, String name) {
+        try {
+            UUID uuid = UUID.nameUUIDFromBytes(textureValue.getBytes(StandardCharsets.UTF_8));
+            Property property = new Property("textures", textureValue);
+            PropertyMap properties = new PropertyMap(ImmutableMultimap.<String, Property>builder().put("textures", property).build());
+            GameProfile profile = new GameProfile(uuid, "SkyBlockPet", properties);
+            ItemStack stack = new ItemStack(Items.PLAYER_HEAD);
+            stack.set(DataComponents.PROFILE, ResolvableProfile.createResolved(profile));
+            if (name != null && !name.isBlank()) stack.set(DataComponents.CUSTOM_NAME, Component.literal(name));
+            return stack;
+        } catch (Throwable ignored) {
+            return ItemStack.EMPTY;
         }
     }
 
@@ -211,9 +232,7 @@ public class PetOverlay {
         return best;
     }
 
-    private static boolean isUsablePetHead(ItemStack stack) {
-        return !stack.isEmpty() && stack.getItem() == Items.PLAYER_HEAD;
-    }
+    private static boolean isUsablePetHead(ItemStack stack) { return !stack.isEmpty() && stack.getItem() == Items.PLAYER_HEAD; }
 
     private long calculateTotalXp(int level, long localXp, String rarity) {
         if (petName.toLowerCase(Locale.ROOT).contains("dragon")) { int clamped = Math.min(level, 200); long total = 25_353_230L; if (clamped > 100) total += (long)(clamped - 100) * 1_886_700L; return total + Math.max(0L, localXp); }
