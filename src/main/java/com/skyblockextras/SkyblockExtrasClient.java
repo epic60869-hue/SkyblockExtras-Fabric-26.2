@@ -4,7 +4,7 @@ import com.skyblockextras.config.SbeConfig;
 import com.skyblockextras.pet.PetOverlay;
 import com.skyblockextras.rng.RngDropOverlay;
 import com.skyblockextras.rng.RngTracker;
-import com.skyblockextras.screen.SbeModernScreen;
+import com.skyblockextras.screen.SbeSkyHanniScreen;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -89,7 +89,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
 
     private static int openSettings(Minecraft minecraft) {
         if (minecraft == null) return 0;
-        minecraft.execute(() -> minecraft.gui.setScreen(new SbeModernScreen(null)));
+        minecraft.execute(() -> minecraft.gui.setScreen(new SbeSkyHanniScreen(null)));
         return 1;
     }
 }
