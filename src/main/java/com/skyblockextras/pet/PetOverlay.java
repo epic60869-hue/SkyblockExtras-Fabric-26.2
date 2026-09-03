@@ -33,7 +33,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** SkyBlock pet HUD. Reads pet stats from TAB and the opened Pets menu. */
+/** SkyBlock pet HUD. The received Pet: TAB widget is the source of truth for the equipped pet. */
 public class PetOverlay {
     private static final long LEGENDARY_LEVEL_100_XP = 25_353_230L;
     private static final long OVERFLOW_XP_PER_LEVEL = 1_886_700L;
@@ -47,8 +47,6 @@ public class PetOverlay {
     private String petItem = "";
     private ItemStack resolvedPetIcon = ItemStack.EMPTY;
     private String resolvedIconKey = "";
-
-    /** Runtime cache: each pet keeps its last known held item and real profile icon. */
     private final Map<String, PetCache> petCache = new HashMap<>();
 
     private static final Pattern PET_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?\\s+(?:(\\d+)\\s*[♦◆✦])?\\s*(.+)");
@@ -91,55 +89,78 @@ public class PetOverlay {
     }
 
     private void readHypixelTab(Minecraft client) {
-        if (client.getConnection() == null) return;
-        StringBuilder all = new StringBuilder();
+        if (client.getConnection() == null || client.player == null) return;
+
         Collection<PlayerInfo> players = client.getConnection().getListedOnlinePlayers();
+        PlayerInfo localInfo = null;
+        StringBuilder localText = new StringBuilder();
+        StringBuilder fallbackText = new StringBuilder();
+
+        // IMPORTANT: prefer the local player's PlayerInfo. The previous implementation
+        // took the first matching Pet: widget from the whole tab list, which can leave the
+        // HUD stuck on the old pet after a loadout swap.
+        UUID localUuid = client.player.getUUID();
         for (PlayerInfo info : players) {
             Component display = info.getTabListDisplayName();
-            if (display != null) all.append(display.getString()).append('\n');
+            if (display == null) continue;
+            String text = display.getString();
+            if (info.getProfile() != null && localUuid.equals(info.getProfile().getId())) {
+                localInfo = info;
+                localText.append(text).append('\n');
+            }
+            fallbackText.append(text).append('\n');
         }
-        parseTabText(all.toString());
+
+        if (localInfo != null) {
+            String local = localText.toString();
+            if (containsPetWidget(local)) {
+                parseTabText(local);
+                return;
+            }
+        }
+
+        // Some Hypixel tab implementations don't attach the whole widget to the local
+        // PlayerInfo. Keep a fallback scan, but prefer a Pet: widget over arbitrary rows.
+        parseTabText(fallbackText.toString());
     }
 
-    /** Prefer the actual local "Pet:" section so another player's pet cannot overwrite it. */
+    private static boolean containsPetWidget(String text) {
+        if (text == null) return false;
+        String lower = stripFormatting(text).toLowerCase(Locale.ROOT);
+        return lower.contains("pet:") || lower.matches("(?s).*\\[lvl\\s*\\d+\\].*");
+    }
+
     private void parseTabText(String raw) {
         if (raw == null || raw.isBlank()) return;
         String[] lines = raw.split("\\R");
 
-        int petHeader = -1;
+        // First pass: exact Pet: header. This is the most reliable Hypixel widget marker.
         for (int i = 0; i < lines.length; i++) {
             String line = stripFormatting(lines[i]);
             if (line.equalsIgnoreCase("Pet:") || line.toLowerCase(Locale.ROOT).startsWith("pet:")) {
-                petHeader = i;
-                break;
-            }
-        }
-
-        if (petHeader >= 0) {
-            String inline = stripFormatting(lines[petHeader]);
-            String afterHeader = inline.length() > 4 ? inline.substring(4).trim() : "";
-            if (!afterHeader.isBlank()) {
-                ParsedPet parsed = parsePetLine(afterHeader);
-                if (parsed != null) applyTabPet(parsed, lines, petHeader + 1);
-            } else {
-                for (int i = petHeader + 1; i < Math.min(lines.length, petHeader + 5); i++) {
-                    String line = stripFormatting(lines[i]);
-                    if (line.isBlank()) continue;
-                    ParsedPet parsed = parsePetLine(line);
+                String inline = line.length() > 4 ? line.substring(4).trim() : "";
+                if (!inline.isBlank()) {
+                    ParsedPet parsed = parsePetLine(inline);
                     if (parsed != null) {
                         applyTabPet(parsed, lines, i + 1);
                         return;
                     }
                 }
+                for (int j = i + 1; j < Math.min(lines.length, i + 6); j++) {
+                    ParsedPet parsed = parsePetLine(stripFormatting(lines[j]));
+                    if (parsed != null) {
+                        applyTabPet(parsed, lines, j + 1);
+                        return;
+                    }
+                }
             }
-            return;
         }
 
-        // Fallback for servers/modpacks that omit the Pet: header.
-        for (String line : lines) {
-            ParsedPet parsed = parsePetLine(stripFormatting(line));
+        // Second pass: direct [Lvl N] pet rows. Only accept known pet names.
+        for (int i = 0; i < lines.length; i++) {
+            ParsedPet parsed = parsePetLine(stripFormatting(lines[i]));
             if (parsed != null) {
-                applyTabPet(parsed, lines, 0);
+                applyTabPet(parsed, lines, i + 1);
                 return;
             }
         }
@@ -155,17 +176,16 @@ public class PetOverlay {
             String name = findPetName(details);
             if (name == null) return null;
             return new ParsedPet(name, findRarity(details), level);
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
+        } catch (NumberFormatException ignored) { return null; }
     }
 
     private void applyTabPet(ParsedPet parsed, String[] lines, int startIndex) {
+        String oldPet = petName;
         setPet(parsed.name, parsed.rarity, parsed.level);
         long localXp = -1L;
         float progress = -1.0f;
         String parsedItem = "";
-        for (int i = startIndex; i < Math.min(lines.length, startIndex + 4); i++) {
+        for (int i = startIndex; i < Math.min(lines.length, startIndex + 5); i++) {
             String line = stripFormatting(lines[i]);
             if (line.isBlank()) continue;
             Matcher xp = PET_XP_LINE.matcher(line);
@@ -187,19 +207,29 @@ public class PetOverlay {
         if (!parsedItem.isBlank()) petItem = parsedItem;
         else if (cached != null && !cached.petItem.isBlank()) petItem = cached.petItem;
 
-        if (localXp >= 0) {
-            long calculated = calculateTotalXp(petLevel, localXp, petRarity);
-            currentXp = calculated;
-            if (cached != null && cached.menuTotalXp >= 0 && cached.menuTotalXp > currentXp && cached.menuTotalXp - currentXp <= OVERFLOW_XP_PER_LEVEL * 2L) {
-                currentXp = cached.menuTotalXp;
-            }
-        } else if (cached != null && cached.menuTotalXp >= 0) {
-            currentXp = cached.menuTotalXp;
-        }
+        if (localXp >= 0) currentXp = calculateTotalXp(petLevel, localXp, petRarity);
+        else if (cached != null && cached.menuTotalXp >= 0) currentXp = cached.menuTotalXp;
+
         if (progress >= 0) tabProgress = progress;
+
+        // If TAB says the equipped pet changed, immediately restore that pet's cached
+        // held item/icon instead of carrying the previous pet's state across the swap.
+        if (!petName.equalsIgnoreCase(oldPet)) {
+            PetCache newCache = petCache.get(cacheKey(petName));
+            if (newCache != null) {
+                if (!newCache.petItem.isBlank() && parsedItem.isBlank()) petItem = newCache.petItem;
+                if (!newCache.icon.isEmpty()) {
+                    resolvedPetIcon = newCache.icon.copy();
+                    resolvedIconKey = "cache:" + cacheKey(petName);
+                } else {
+                    resolvedPetIcon = ItemStack.EMPTY;
+                    resolvedIconKey = "";
+                }
+                if (newCache.menuTotalXp >= 0 && localXp < 0) currentXp = newCache.menuTotalXp;
+            }
+        }
     }
 
-    /** Reads the active pet from the Pets menu and caches its item/icon per pet. */
     private void readOpenedPetsMenu(Minecraft client) {
         if (!(client.gui.screen() instanceof AbstractContainerScreen<?> screen)) return;
         String title = stripFormatting(screen.getTitle().getString());
@@ -250,8 +280,7 @@ public class PetOverlay {
             boolean active = json.has("active") && json.get("active").getAsBoolean();
             String heldItem = json.has("heldItem") && !json.get("heldItem").isJsonNull() ? json.get("heldItem").getAsString() : "";
             double experience = json.has("exp") ? json.get("exp").getAsDouble() : -1.0D;
-            int level = petLevel;
-            if (experience >= 0.0D) level = calculateLevelFromTotalXp((long) experience, rarity, type);
+            int level = experience >= 0.0D ? calculateLevelFromTotalXp((long) experience, rarity, type) : petLevel;
             return new PetMenuInfo(type, rarity, active, heldItem, experience, level);
         } catch (RuntimeException ignored) { return null; }
     }
@@ -270,17 +299,14 @@ public class PetOverlay {
         return "";
     }
 
-    /** Resolve a real SkyBlock pet head, preferring the per-pet cache. */
     private void resolveRealPetIcon(Minecraft client) {
         if (client.level == null || client.player == null || petName.equals("No Pet")) return;
-
         PetCache cached = petCache.get(cacheKey(petName));
         if (cached != null && !cached.icon.isEmpty()) {
             resolvedPetIcon = cached.icon.copy();
             resolvedIconKey = "cache:" + cacheKey(petName);
             return;
         }
-
         if (petName.equalsIgnoreCase("Rose Dragon")) {
             ItemStack rose = createTexturedHead(ROSE_DRAGON_TEXTURE, "Rose Dragon");
             if (!rose.isEmpty()) {
@@ -291,7 +317,6 @@ public class PetOverlay {
             }
         }
 
-        // Dynamic fallback for pets whose real player-head is currently rendered.
         LivingEntity namedAnchor = null;
         double anchorDistance = Double.MAX_VALUE;
         for (Entity entity : client.level.entitiesForRendering()) {
@@ -540,22 +565,14 @@ public class PetOverlay {
 
     private void setPet(String name, String rarity, int level) {
         if (name == null || name.isBlank()) return;
-        boolean changed = !name.equalsIgnoreCase(petName);
         petName = name;
         if (rarity != null && !rarity.isBlank()) petRarity = rarity;
         petLevel = Math.max(1, Math.min(200, level));
-
         PetCache cached = petCache.get(cacheKey(name));
-        if (cached != null) {
-            if (!cached.petItem.isBlank()) petItem = cached.petItem;
-            if (!cached.icon.isEmpty()) {
-                resolvedPetIcon = cached.icon.copy();
-                resolvedIconKey = "cache:" + cacheKey(name);
-            }
-            if (cached.menuTotalXp >= 0 && (changed || currentXp <= 0)) currentXp = cached.menuTotalXp;
-        } else if (changed) {
-            resolvedPetIcon = ItemStack.EMPTY;
-            resolvedIconKey = "";
+        if (cached != null && !cached.petItem.isBlank()) petItem = cached.petItem;
+        if (cached != null && !cached.icon.isEmpty()) {
+            resolvedPetIcon = cached.icon.copy();
+            resolvedIconKey = "cache:" + cacheKey(name);
         }
     }
 
@@ -575,7 +592,6 @@ public class PetOverlay {
 
     private record ParsedPet(String name, String rarity, int level) {}
     private record PetMenuInfo(String type, String rarity, boolean active, String heldItem, double experience, int level) {}
-
     private static final class PetCache {
         private ItemStack icon = ItemStack.EMPTY;
         private String petItem = "";
