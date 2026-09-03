@@ -28,11 +28,13 @@ public class PetOverlay {
     private float tabProgress = -1.0f;
     private String petItem = "";
     private ItemStack resolvedPetIcon = ItemStack.EMPTY;
+    private String resolvedIconKey = "";
 
     private static final Pattern PET_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?\\s+(?:(\\d+)\\s*[♦◆✦])?\\s*(.+)");
     private static final Pattern PET_XP_LINE = Pattern.compile("(?i)([0-9,.]+(?:[kmb])?)\\s*/\\s*([0-9,.]+(?:[kmb])?)\\s*XP(?:\\s*\\(([0-9,.]+)%\\))?");
     private static final Pattern PET_LABEL_XP = Pattern.compile("(?i)pet\\s*xp\\s*[:：]\\s*([0-9,.]+(?:[kmb])?)(?:\\s*/\\s*([0-9,.]+(?:[kmb])?))?");
     private static final Pattern ITEM_PATTERN = Pattern.compile("(?i)(?:held item|pet item)\\s*[:：]\\s*(.+)");
+    private static final Pattern ENTITY_LEVEL_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?");
 
     private static final String[] KNOWN_PETS = {
         "Alligator", "Ammonite", "Ankylosaurus", "Armadillo", "Baby Yeti", "Bal", "Bat", "Bee", "Black Cat",
@@ -59,7 +61,13 @@ public class PetOverlay {
 
     public void tick(Minecraft client) {
         if (!config.petOverlayEnabled || client == null || client.player == null) return;
+        String oldPetKey = petName + "|" + petLevel + "|" + petRarity + "|" + overflowLevel;
         readHypixelTab(client);
+        String newPetKey = petName + "|" + petLevel + "|" + petRarity + "|" + overflowLevel;
+        if (!newPetKey.equals(oldPetKey)) {
+            resolvedPetIcon = ItemStack.EMPTY;
+            resolvedIconKey = "";
+        }
         resolveRealPetIcon(client);
     }
 
@@ -123,31 +131,74 @@ public class PetOverlay {
         if (progress >= 0) tabProgress = progress;
     }
 
-    /** Uses the actual player-head ItemStack rendered by Hypixel for the nearby pet. */
+    /**
+     * Resolve the real Hypixel pet head using the same core idea as Skysoft:
+     * inspect the actual player-head ItemStack rather than using a fake/static icon.
+     *
+     * The old implementation selected the nearest player head as a fallback.
+     * That was unsafe because Slugs and other nearby NPC/entity ArmorStands also
+     * use player heads. We now require the ArmorStand to look like the active pet:
+     * matching active-pet level, pet-like position, and pet-like ArmorStand flags.
+     */
     private void resolveRealPetIcon(Minecraft client) {
-        if (client.level == null || client.player == null) return;
-        double maxDistance = 8.0D;
+        if (client.level == null || client.player == null || petName.equals("No Pet")) return;
+
+        double maxDistance = 6.0D;
         var box = client.player.getBoundingBox().inflate(maxDistance);
         ArmorStand best = null;
-        double bestDistance = Double.MAX_VALUE;
+        double bestScore = Double.NEGATIVE_INFINITY;
 
         for (ArmorStand stand : client.level.getEntitiesOfClass(ArmorStand.class, box)) {
             if (!stand.isAlive()) continue;
+
             ItemStack head = stand.getItemBySlot(EquipmentSlot.HEAD);
             if (head.isEmpty() || head.getItem() != Items.PLAYER_HEAD) continue;
-            double distance = stand.distanceToSqr(client.player);
-            if (distance > maxDistance * maxDistance) continue;
 
-            String customName = stand.getCustomName() == null ? "" : stripFormatting(stand.getCustomName().getString());
-            boolean nameMatch = !petName.equals("No Pet") && customName.toLowerCase(Locale.ROOT).contains(petName.toLowerCase(Locale.ROOT));
-            if (nameMatch || best == null || distance < bestDistance) {
+            double distanceSq = stand.distanceToSqr(client.player);
+            if (distanceSq > maxDistance * maxDistance) continue;
+
+            String customName = stand.getCustomName() == null
+                    ? ""
+                    : stripFormatting(stand.getCustomName().getString());
+
+            Matcher levelMatcher = ENTITY_LEVEL_PATTERN.matcher(customName);
+            int entityLevel = levelMatcher.find() ? parseInt(levelMatcher.group(1)) : -1;
+
+            // Pet ArmorStands normally follow the player and have a level in the
+            // display name. Do not use an arbitrary nearby player head anymore.
+            if (entityLevel != petLevel) continue;
+            if (!isPetLikeVerticalPosition(stand, client.player)) continue;
+
+            double score = 0.0D;
+            if (stand.isInvisible()) score += 1000.0D;
+            if (stand.isMarker()) score += 300.0D;
+            if (stand.isSmall()) score += 150.0D;
+
+            int otherEquipment = 0;
+            for (EquipmentSlot slot : EquipmentSlot.VALUES) {
+                if (slot != EquipmentSlot.HEAD && !stand.getItemBySlot(slot).isEmpty()) otherEquipment++;
+            }
+            if (otherEquipment == 0) score += 200.0D;
+            score -= distanceSq * 2.0D;
+
+            if (score > bestScore) {
                 best = stand;
-                bestDistance = distance;
-                if (nameMatch) break;
+                bestScore = score;
             }
         }
 
-        if (best != null) resolvedPetIcon = best.getItemBySlot(EquipmentSlot.HEAD).copy();
+        if (best != null) {
+            String key = petName + "|" + petLevel + "|" + best.getId();
+            if (!key.equals(resolvedIconKey)) {
+                resolvedPetIcon = best.getItemBySlot(EquipmentSlot.HEAD).copy();
+                resolvedIconKey = key;
+            }
+        }
+    }
+
+    private boolean isPetLikeVerticalPosition(ArmorStand stand, net.minecraft.world.entity.player.Player player) {
+        double relativeY = stand.getY() - player.getY();
+        return relativeY >= -1.5D && relativeY <= 3.0D;
     }
 
     private long calculateTotalXp(int level, long localXp, String rarity) {
@@ -254,6 +305,7 @@ public class PetOverlay {
             return (long) Double.parseDouble(v);
         } catch (NumberFormatException e) { return -1L; }
     }
+    private static int parseInt(String value) { try { return Integer.parseInt(value); } catch (NumberFormatException e) { return -1; } }
     private static float parsePercent(String value) { try { return Float.parseFloat(value.replace(",", "")); } catch (NumberFormatException e) { return -1.0f; } }
     private void setPet(String name, String rarity, int level) { petName = name; petRarity = rarity == null ? "" : rarity; petLevel = Math.max(1, level); }
     private int rarityColor() {
