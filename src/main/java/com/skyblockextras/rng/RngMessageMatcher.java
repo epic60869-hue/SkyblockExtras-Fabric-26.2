@@ -16,18 +16,24 @@ public final class RngMessageMatcher {
         String normalized = stripMinecraftFormatting(message).trim();
         if (normalized.isBlank()) return null;
 
-        // Farming drops must be announced with the Hypixel RARE CROP! prefix.
-        // This prevents normal chat or pasted item names from triggering RNG timers.
+        // Match the exact item name anywhere in the message. Harvest Feast
+        // drops are validated separately by RngTracker so they still require
+        // the real "RARE CROP!" announcement.
         for (String item : trackableDrops) {
-            if (isRareCropAnnouncement(normalized, item)) return item;
+            if (containsWholePhrase(normalized, item)) return item;
         }
         return null;
     }
 
+    /**
+     * Matches Hypixel's Harvest Feast announcement while allowing the dynamic
+     * RNG reward suffix, e.g. "RARE CROP! Cropie (+106.8)".
+     */
     public static boolean isRareCropAnnouncement(String text, String item) {
         if (text == null || item == null || item.isBlank()) return false;
-        String regex = "(?i)^\\s*RARE\\s+CROP!\\s*" + Pattern.quote(item.trim()) + "\\s*[.!]?\\s*$";
-        return Pattern.compile(regex).matcher(text).find();
+        String regex = "(?i)^\\s*RARE\\s+CROP!\\s*" + Pattern.quote(item.trim())
+                + "(?:\\s*\\(\\s*[+-]?[0-9,.]+(?:[kmb])?\\s*[^)]*\\))?\\s*[.!]?\\s*$";
+        return Pattern.compile(regex).matcher(stripMinecraftFormatting(text)).matches();
     }
 
     public static boolean containsWholePhrase(String text, String phrase) {
