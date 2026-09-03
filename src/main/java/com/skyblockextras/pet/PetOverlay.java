@@ -99,18 +99,15 @@ public class PetOverlay {
     private static String cleanItemName(String item) { return item.replaceAll("\\s+", " ").trim(); }
     private static int indexOfIgnoreCase(String text, String needle) { return text.toLowerCase(Locale.ROOT).indexOf(needle.toLowerCase(Locale.ROOT)); }
     private static String stripFormatting(String s) { return s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim(); }
-
     private static String findRarity(String text) {
         String[] rarities = {"Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common"};
         for (String rarity : rarities) if (text.toLowerCase(Locale.ROOT).contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
         return "";
     }
-
     private static String removeRarity(String text, String rarity) {
         if (rarity.isBlank()) return text.trim();
         return text.replaceFirst("(?i)\\b" + Pattern.quote(rarity) + "\\b", "").trim();
     }
-
     private static long parseNumber(String value) {
         String v = value.replace(",", "").trim().toUpperCase(Locale.ROOT);
         try {
@@ -120,12 +117,10 @@ public class PetOverlay {
             return Math.round(Double.parseDouble(v));
         } catch (NumberFormatException e) { return -1L; }
     }
-
     private static int maxPetLevel(String name) {
         String n = name.toLowerCase(Locale.ROOT);
         return n.contains("golden dragon") || n.contains("jade dragon") || n.contains("rose dragon") ? 200 : 100;
     }
-
     private static long xpToLevelCap(int level, String rarity, String name) {
         String n = name.toLowerCase(Locale.ROOT);
         if (n.contains("golden dragon") || n.contains("jade dragon") || n.contains("rose dragon")) {
@@ -135,7 +130,6 @@ public class PetOverlay {
         }
         return maxXpForRarity(rarity);
     }
-
     private static long maxXpForRarity(String rarity) {
         return switch (rarity.toLowerCase(Locale.ROOT)) {
             case "common" -> 5_624_785L;
@@ -154,7 +148,7 @@ public class PetOverlay {
         if (n.contains("turtle")) return new ItemStack(Items.TURTLE_EGG);
         if (n.contains("bee")) return new ItemStack(Items.HONEYCOMB);
         if (n.contains("wolf") || n.contains("spirit")) return new ItemStack(Items.BONE);
-        if (n.contains("sheep")) return new ItemStack(net.minecraft.world.level.block.Blocks.WHITE_WOOL.asItem());
+        if (n.contains("sheep")) return new ItemStack(Items.WHITE_WOOL);
         if (n.contains("pig")) return new ItemStack(Items.PORKCHOP);
         if (n.contains("parrot")) return new ItemStack(Items.COOKIE);
         if (n.contains("bat")) return new ItemStack(Items.PHANTOM_MEMBRANE);
@@ -181,11 +175,11 @@ public class PetOverlay {
         if (n.contains("bejeweled collar")) return new ItemStack(Items.DIAMOND);
         if (n.contains("big teeth") || n.contains("bigger teeth") || n.contains("gold claws")) return new ItemStack(Items.GOLD_INGOT);
         if (n.contains("bingo booster")) return new ItemStack(Items.FIREWORK_ROCKET);
-        if (n.contains("brown bandana")) return new ItemStack(Items.BROWN_DYE);
+        if (n.contains("brown bandana")) return new ItemStack(Items.DIRT);
         if (n.contains("bubblegum")) return new ItemStack(Items.SLIME_BALL);
         if (n.contains("burnt texts")) return new ItemStack(Items.BOOK);
         if (n.contains("cretan urn")) return new ItemStack(Items.FLOWER_POT);
-        if (n.contains("crochet tiger plushie")) return new ItemStack(Items.ORANGE_WOOL);
+        if (n.contains("crochet tiger plushie")) return new ItemStack(Items.WHITE_WOOL);
         if (n.contains("dead cat food")) return new ItemStack(Items.COD);
         if (n.contains("dwarf turtle shelmet") || n.contains("hephaestus shelmet")) return new ItemStack(Items.IRON_HELMET);
         if (n.contains("edible seaweed")) return new ItemStack(Items.DRIED_KELP);
@@ -195,9 +189,9 @@ public class PetOverlay {
         if (n.contains("four-eyed fish")) return new ItemStack(Items.PUFFERFISH);
         if (n.contains("frog treat")) return new ItemStack(Items.FROGSPAWN);
         if (n.contains("grandma's knitting needle")) return new ItemStack(Items.STRING);
-        if (n.contains("green bandana")) return new ItemStack(Items.GREEN_DYE);
+        if (n.contains("green bandana")) return new ItemStack(Items.SLIME_BALL);
         if (n.contains("hardened scales") || n.contains("reinforced scales")) return new ItemStack(Items.IRON_INGOT);
-        if (n.contains("hephaestus plushie")) return new ItemStack(net.minecraft.world.level.block.Blocks.WHITE_WOOL.asItem());
+        if (n.contains("hephaestus plushie")) return new ItemStack(Items.WHITE_WOOL);
         if (n.contains("hephaestus relic") || n.contains("hephaestus remedies")) return new ItemStack(Items.NETHERITE_INGOT);
         if (n.contains("hephaestus souvenir")) return new ItemStack(Items.GOLD_NUGGET);
         if (n.contains("hephaestus urn")) return new ItemStack(Items.FLOWER_POT);
@@ -214,7 +208,7 @@ public class PetOverlay {
         if (n.contains("titanium minecart")) return new ItemStack(Items.MINECART);
         if (n.contains("uncommon party hat")) return new ItemStack(Items.PAPER);
         if (n.contains("washed-up souvenir")) return new ItemStack(Items.HEART_OF_THE_SEA);
-        if (n.contains("yellow bandana")) return new ItemStack(Items.YELLOW_DYE);
+        if (n.contains("yellow bandana")) return new ItemStack(Items.HONEYCOMB);
         return new ItemStack(Items.ENCHANTED_BOOK);
     }
 
@@ -276,7 +270,6 @@ public class PetOverlay {
             default -> 0xFFB96BFF;
         };
     }
-
     private int getOverlayWidth() { return config.showPetIcon ? 220 : 195; }
     private int getOverlayHeight() {
         int h = 19;
