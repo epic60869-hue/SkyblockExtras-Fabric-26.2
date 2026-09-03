@@ -20,6 +20,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Center-screen RNG announcement overlay with live Bazaar/LBIN prices and stack counts. */
 public class RngDropOverlay {
+    private static final float TEXT_SCALE = 1.65f;
+
     private final SbeConfig config;
     private final PriceService prices = new PriceService();
     private String item = "";
@@ -56,36 +58,54 @@ public class RngDropOverlay {
         if (!config.rngDropOverlayEnabled || item.isBlank() || System.currentTimeMillis() >= expiresAt) return;
         Minecraft client = Minecraft.getInstance();
         float scale = Math.max(0.5f, Math.min(3.0f, config.rngDropOverlayScale));
+        float totalScale = scale * TEXT_SCALE;
+
         String title = "RNG DROP";
         String itemText = "x" + amount + " " + item;
         String priceText = price.equals("--") ? "--" : price;
+
         int titleWidth = client.font.width(title);
         int itemWidth = client.font.width(itemText);
         int priceWidth = client.font.width(priceText);
-        int width = Math.max(240, Math.max(titleWidth, Math.max(itemWidth, priceWidth)) + 70);
-        int height = 82;
-        int scaledWidth = Math.round(width * scale);
-        int scaledHeight = Math.round(height * scale);
+        int contentWidth = Math.max(titleWidth, Math.max(itemWidth, priceWidth));
+        int width = Math.max(270, contentWidth + 70);
+        int height = 92;
+        int scaledWidth = Math.round(width * totalScale);
+        int scaledHeight = Math.round(height * totalScale);
         int screenWidth = client.getWindow().getGuiScaledWidth();
         int screenHeight = client.getWindow().getGuiScaledHeight();
         int x = config.rngDropOverlayX < 0 ? (screenWidth - scaledWidth) / 2 : config.rngDropOverlayX;
         int y = config.rngDropOverlayY < 0 ? (screenHeight - scaledHeight) / 2 : config.rngDropOverlayY;
+
         var pose = graphics.pose();
         pose.pushMatrix();
         pose.translate(x, y);
-        pose.scale(scale, scale);
+        pose.scale(totalScale, totalScale);
+
+        // SkyHanni-inspired dark panel with a bright gold accent.
         if (config.rngDropOverlayBackgroundEnabled) {
-            graphics.fill(-4, -4, width + 4, height + 4, 0x55200055);
-            graphics.outline(-3, -3, width + 3, height + 3, 0xFFFF55FF);
-            graphics.fill(0, 0, width, height, 0xEE101018);
-            graphics.outline(0, 0, width, height, 0xFFFFA3FF);
-            graphics.fill(1, 1, width - 1, 5, 0xFFFF55FF);
-            graphics.fill(1, height - 5, width - 1, height - 1, 0xFF8A2BE2);
+            graphics.fill(-8, -8, width + 8, height + 8, 0x66000000);
+            graphics.outline(-6, -6, width + 6, height + 6, 0xFFAA5500);
+            graphics.fill(0, 0, width, height, 0xE6101015);
+            graphics.outline(1, 1, width - 1, height - 1, 0xFF5A5A63);
+            graphics.fill(1, 1, width - 1, 5, 0xFFFFAA00);
+            graphics.fill(1, height - 5, width - 1, height - 1, 0xFFAA5500);
         }
-        graphics.text(client.font, Component.literal(title), (width - titleWidth) / 2, 10, 0xFFFF55FF, true);
-        graphics.text(client.font, Component.literal(itemText), (width - itemWidth) / 2, 31, 0xFFFFFFFF, true);
-        graphics.text(client.font, Component.literal(priceText), (width - priceWidth) / 2, 52, 0xFFFFD45A, true);
+
+        drawBoldCentered(graphics, client, title, width, 10, 0xFFFFAA00);
+        drawBoldCentered(graphics, client, itemText, width, 35, 0xFFFFFFFF);
+        drawBoldCentered(graphics, client, priceText, width, 61, 0xFF55FF55);
         pose.popMatrix();
+    }
+
+    private void drawBoldCentered(GuiGraphicsExtractor graphics, Minecraft client, String text, int width, int y, int color) {
+        int textWidth = client.font.width(text);
+        int x = (width - textWidth) / 2;
+        Component component = Component.literal(text);
+        // Vanilla has no standalone bold-font renderer here, so two tightly offset
+        // passes give the same heavy/high-visibility look without changing the font file.
+        graphics.text(client.font, component, x, y, color, true);
+        graphics.text(client.font, component, x + 1, y, color, true);
     }
 
     public boolean isVisible() { return config.rngDropOverlayEnabled && !item.isBlank() && System.currentTimeMillis() < expiresAt; }
