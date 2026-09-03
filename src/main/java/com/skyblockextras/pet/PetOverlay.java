@@ -20,14 +20,15 @@ public class PetOverlay {
     private String petName = "No Pet";
     private String petRarity = "";
     private int petLevel = 1;
+    private int overflowLevel = 0;
     private long currentXp = 0L;
     private long requiredXp = 25_353_230L;
-    private long overflowXp = 0L;
-    private int overflowLevel = 1;
     private String petItem = "";
     private int tabScanCooldown = 0;
 
-    private static final Pattern PET_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?\\s+(.+)");
+    // Hypixel commonly displays the active pet as: [Lvl 168] 0♦ Rose Dragon
+    // The number before ♦ is the overflow level. It is NOT part of the pet name.
+    private static final Pattern PET_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?\\s+(?:(\\d+)\\s*[♦◆])?\\s*(.+)");
     private static final Pattern XP_PATTERN = Pattern.compile("(?i)pet\\s*xp\\s*[:：]\\s*([0-9,.]+(?:[kmb])?)(?:\\s*/\\s*([0-9,.]+(?:[kmb])?))?");
     private static final Pattern ITEM_PATTERN = Pattern.compile("(?i)(?:held item|pet item)\\s*[:：]\\s*(.+)");
 
@@ -99,11 +100,13 @@ public class PetOverlay {
             if (pet.find()) {
                 try {
                     int level = Integer.parseInt(pet.group(1));
-                    String details = pet.group(2).trim();
+                    int parsedOverflow = pet.group(2) == null ? 0 : Integer.parseInt(pet.group(2));
+                    String details = pet.group(3).trim();
                     String rarity = findRarity(details);
                     String detectedName = findKnownPet(details);
                     if (detectedName != null) {
                         setPet(detectedName, rarity, level);
+                        overflowLevel = Math.max(0, parsedOverflow);
                         foundPet = true;
                     }
                 } catch (NumberFormatException ignored) { }
@@ -116,11 +119,13 @@ public class PetOverlay {
                 if (explicitPetMatcher.matches()) {
                     try {
                         int level = Integer.parseInt(explicitPetMatcher.group(1));
-                        String details = explicitPetMatcher.group(2).trim();
+                        int parsedOverflow = explicitPetMatcher.group(2) == null ? 0 : Integer.parseInt(explicitPetMatcher.group(2));
+                        String details = explicitPetMatcher.group(3).trim();
                         String rarity = findRarity(details);
                         String detectedName = findKnownPet(details);
                         if (detectedName != null) {
                             setPet(detectedName, rarity, level);
+                            overflowLevel = Math.max(0, parsedOverflow);
                             foundPet = true;
                         }
                     } catch (NumberFormatException ignored) { }
@@ -131,9 +136,6 @@ public class PetOverlay {
         if (!foundPet) return;
         if (tabXp >= 0L) currentXp = tabXp;
         requiredXp = tabRequired >= 0L ? tabRequired : xpToLevelCap(petLevel, petRarity, petName);
-        overflowLevel = calcOverflowLevel(currentXp, petRarity);
-        long progressXp = calcLeftOverXp(currentXp, petRarity);
-        overflowXp = progressXp >= 0L ? Math.max(0L, progressXp) : Math.max(0L, currentXp - requiredXp);
     }
 
     private static String findKnownPet(String text) {
@@ -156,14 +158,15 @@ public class PetOverlay {
     private static long maxXpForRarity(String rarity){return switch(rarity.toLowerCase(Locale.ROOT)){case "common"->5_624_785L;case "uncommon"->8_644_220L;case "rare"->12_626_665L;case "epic"->18_608_500L;case "legendary","mythic"->25_353_230L;default->25_353_230L;};}
     private static int getRarityOffset(String rarity){return switch(rarity.toLowerCase(Locale.ROOT)){case "common"->0;case "uncommon"->6;case "rare"->11;case "epic"->15;default->20;};}
     private static int getXpForLevel(int level,String rarity){int offset=getRarityOffset(rarity)+Math.max(0,level);return offset<PET_XP.length?PET_XP[offset]:1_886_700;}
-    private static int calcOverflowLevel(long xp,String rarity){long exp=Math.max(0L,xp);int level=0;while(exp>0L&&level<1000){exp-=getXpForLevel(level,rarity);level++;}return Math.max(1,level);}
-    private static long calcLeftOverXp(long xp,String rarity){long exp=Math.max(0L,xp);int level=0;while(exp>0L&&level<1000){long needed=getXpForLevel(level,rarity);if(exp>needed)exp-=needed;else return exp;level++;}return -1L;}
+    private static void recalcOverflowFromXp() { }
     private ItemStack petIcon(){String n=petName.toLowerCase(Locale.ROOT);if(n.contains("dragon"))return new ItemStack(Items.DRAGON_EGG);if(n.contains("rabbit"))return new ItemStack(Items.RABBIT);if(n.contains("turtle"))return new ItemStack(Items.TURTLE_EGG);if(n.contains("bee"))return new ItemStack(Items.HONEYCOMB);if(n.contains("wolf")||n.contains("spirit"))return new ItemStack(Items.BONE);if(n.contains("sheep"))return new ItemStack(Items.PAPER);if(n.contains("pig"))return new ItemStack(Items.PORKCHOP);if(n.contains("parrot"))return new ItemStack(Items.COOKIE);if(n.contains("bat"))return new ItemStack(Items.PHANTOM_MEMBRANE);if(n.contains("silverfish"))return new ItemStack(Items.STONE);if(n.contains("slime"))return new ItemStack(Items.SLIME_BALL);if(n.contains("magma"))return new ItemStack(Items.MAGMA_CREAM);if(n.contains("blaze"))return new ItemStack(Items.BLAZE_ROD);if(n.contains("skeleton"))return new ItemStack(Items.SKELETON_SKULL);if(n.contains("zombie"))return new ItemStack(Items.ZOMBIE_HEAD);if(n.contains("wither"))return new ItemStack(Items.WITHER_SKELETON_SKULL);if(n.contains("enderman"))return new ItemStack(Items.ENDER_PEARL);if(n.contains("guardian"))return new ItemStack(Items.PRISMARINE_SHARD);if(n.contains("dolphin"))return new ItemStack(Items.COD);if(n.contains("squid"))return new ItemStack(Items.INK_SAC);return new ItemStack(Items.PLAYER_HEAD);}
-    public void render(GuiGraphicsExtractor graphics,DeltaTracker deltaTracker){if(!config.petOverlayEnabled||Minecraft.getInstance().player==null)return;Minecraft client=Minecraft.getInstance();float scale=config.petScale<=0?1.0f:config.petScale;var pose=graphics.pose();pose.pushMatrix();pose.translate(config.petX,config.petY);pose.scale(scale,scale);int textX=config.showPetIcon?20:0;int contentHeight=12;if(config.showPetProgress)contentHeight+=10;if(config.showPetXp)contentHeight+=10;if(config.showOverflowXp&&overflowLevel>petLevel)contentHeight+=10;if(config.showPetItem&&!petItem.isBlank())contentHeight+=10;if(config.petBackgroundEnabled){int contentWidth=getOverlayWidth();graphics.fill(textX-4,-3,contentWidth,contentHeight+3,0xB9101117);graphics.outline(textX-4,-3,contentWidth,contentHeight+3,0xFF41434E);graphics.fill(textX-4,-3,textX-1,contentHeight+3,rarityColor());}if(config.showPetIcon)graphics.item(petIcon(),0,0);int y=0;String levelText=config.showPetLevel?"[Lvl "+petLevel+"] ":"";if(!levelText.isEmpty())graphics.text(client.font,Component.literal(levelText),textX,y,0xFFFFFFFF,true);int petNameX=textX+(levelText.isEmpty()?0:client.font.width(levelText));graphics.text(client.font,Component.literal(petName),petNameX,y,rarityColor(),true);y+=12;if(config.showPetProgress){graphics.text(client.font,Component.literal("Level Progress: "+formatPercent(levelProgress())),textX,y,0xFF55FFFF,false);y+=10;}if(config.showPetXp){graphics.text(client.font,Component.literal("Pet XP: "+formatNumber(currentXp)),textX,y,0xFF55FFFF,false);y+=10;}if(config.showOverflowXp&&overflowLevel>petLevel){graphics.text(client.font,Component.literal("Overflow: Lv "+overflowLevel+"  "+formatNumber(overflowXp)+" XP"),textX,y,0xFFFFC857,false);y+=10;}if(config.showPetItem&&!petItem.isBlank())graphics.text(client.font,Component.literal("Pet Item: "+petItem),textX,y,0xFFAA55FF,false);pose.popMatrix();}
-    private float levelProgress(){if(petLevel<=0)return 0.0f;long startXp=getCalculativeXpForLevel(Math.max(0,petLevel-1),petRarity);long needed=getXpForLevel(Math.max(0,petLevel-1),petRarity);if(needed<=0L)return 0.0f;if(currentXp>=startXp+needed)return 100.0f;return Math.max(0.0f,Math.min(100.0f,(currentXp-startXp)*100.0f/needed));}
+    public void render(GuiGraphicsExtractor graphics,DeltaTracker deltaTracker){if(!config.petOverlayEnabled||Minecraft.getInstance().player==null)return;Minecraft client=Minecraft.getInstance();float scale=config.petScale<=0?1.0f:config.petScale;var pose=graphics.pose();pose.pushMatrix();pose.translate(config.petX,config.petY);pose.scale(scale,scale);int textX=config.showPetIcon?20:0;int contentHeight=12;if(config.showPetProgress)contentHeight+=10;if(config.showPetXp)contentHeight+=10;if(config.showPetItem&&!petItem.isBlank())contentHeight+=10;if(config.petBackgroundEnabled){int contentWidth=getOverlayWidth();graphics.fill(textX-4,-3,contentWidth,contentHeight+3,0xB9101117);graphics.outline(textX-4,-3,contentWidth,contentHeight+3,0xFF41434E);graphics.fill(textX-4,-3,textX-1,contentHeight+3,rarityColor());}if(config.showPetIcon)graphics.item(petIcon(),0,0);int y=0;String levelText=config.showPetLevel?"[Lvl "+displayLevel()+"] ":"";if(!levelText.isEmpty())graphics.text(client.font,Component.literal(levelText),textX,y,0xFFFFFFFF,true);int petNameX=textX+(levelText.isEmpty()?0:client.font.width(levelText));graphics.text(client.font,Component.literal(petName),petNameX,y,rarityColor(),true);y+=12;if(config.showPetProgress){graphics.text(client.font,Component.literal("Level Progress: "+formatPercent(levelProgress())),textX,y,0xFF55FFFF,false);y+=10;}if(config.showPetXp){graphics.text(client.font,Component.literal("Pet XP: "+formatNumber(currentXp)),textX,y,0xFF55FFFF,false);y+=10;}if(config.showPetItem&&!petItem.isBlank())graphics.text(client.font,Component.literal("Pet Item: "+petItem),textX,y,0xFFAA55FF,false);pose.popMatrix();}
+    private int displayLevel(){return petLevel>=200 ? 200+overflowLevel : petLevel;}
+    private float levelProgress(){if(petLevel<=0)return 0.0f;if(petLevel>=200)return 100.0f;long startXp=getCalculativeXpForLevel(Math.max(0,petLevel-1),petRarity);long needed=getXpForLevel(Math.max(0,petLevel-1),petRarity);if(needed<=0L)return 0.0f;if(currentXp>=startXp+needed)return 100.0f;return Math.max(0.0f,Math.min(100.0f,(currentXp-startXp)*100.0f/needed));}
     private static long getCalculativeXpForLevel(int level,String rarity){long xp=0L;for(int i=0;i<Math.max(0,level);i++)xp+=getXpForLevel(i,rarity);return xp;}
     private int rarityColor(){return switch(petRarity.toLowerCase(Locale.ROOT)){case "common"->0xFFAAAAAA;case "uncommon"->0xFF55FF55;case "rare"->0xFF5555FF;case "epic"->0xFFAA00AA;case "legendary"->0xFFFFAA00;case "mythic"->0xFFFF55FF;default->0xFFB96BFF;};}
-    private int getOverlayWidth(){int width=config.showPetIcon?20:0;width+=155;if(petItem.length()>20)width+=Math.min(100,(petItem.length()-20)*3);return width;}
-    private String formatPercent(float percent){return String.format(Locale.ROOT,"%.1f%%",percent);}private String formatNumber(long number){return String.format(Locale.ROOT,"%,d",Math.max(0L,number));}
-    public void setPet(String name,String rarity,int level){if(name!=null&&!name.isBlank())petName=name;if(rarity!=null)petRarity=rarity;petLevel=Math.max(1,level);}public void setXp(long current,long required,long overflow){currentXp=Math.max(0,current);requiredXp=Math.max(0,required);overflowXp=Math.max(0,overflow);overflowLevel=calcOverflowLevel(currentXp,petRarity);}public void setPetItem(String item){petItem=item==null?"":item;}public void clearPet(){petName="No Pet";petRarity="";petLevel=1;currentXp=0L;requiredXp=25_353_230L;overflowXp=0L;overflowLevel=1;petItem="";}public String getPetName(){return petName;}public String getPetRarity(){return petRarity;}public int getPetLevel(){return petLevel;}public int getOverflowLevel(){return overflowLevel;}public long getCurrentXp(){return currentXp;}public long getRequiredXp(){return requiredXp;}public long getOverflowXp(){return overflowXp;}public String getPetItem(){return petItem;}
+    private int getOverlayWidth(){int width=config.showPetIcon?20:0;width+=155;return width;}
+    private static String formatNumber(long value){return String.format(Locale.US,"%,d",Math.max(0L,value));}
+    private static String formatPercent(float value){return String.format(Locale.US,"%.1f%%",value);}
+    private void setPet(String name,String rarity,int level){petName=name;petRarity=rarity;petLevel=Math.max(1,level);}
 }
