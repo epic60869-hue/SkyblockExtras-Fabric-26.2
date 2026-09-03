@@ -10,9 +10,12 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 public class SkyblockExtrasClient implements ClientModInitializer {
 
@@ -27,6 +30,19 @@ public class SkyblockExtrasClient implements ClientModInitializer {
         CONFIG = SbeConfig.load();
         RNG = new RngTracker(CONFIG);
         PET = new PetOverlay(CONFIG);
+
+        // Register the pet overlay with Fabric's 26.2 HUD API.
+        // The PetOverlay class contains the actual drawing code, but without
+        // this registration Minecraft never calls its render() method.
+        HudElementRegistry.attachElementBefore(
+                VanillaHudElements.CHAT,
+                Identifier.fromNamespaceAndPath(MOD_ID, "pet_overlay"),
+                (graphics, deltaTracker) -> {
+                    if (PET != null) {
+                        PET.render(graphics, deltaTracker);
+                    }
+                }
+        );
 
         System.out.println("[SBE] Registering client commands...");
 
