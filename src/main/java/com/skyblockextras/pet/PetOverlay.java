@@ -119,11 +119,11 @@ public class PetOverlay {
             int petIndex = indexOfIgnoreCase(line, "pet:");
             if (petIndex >= 0) {
                 String petText = line.substring(petIndex + 4).trim();
-                Matcher pet = PET_PATTERN.matcher(petText);
-                if (pet.matches()) {
+                Matcher explicitPetMatcher = PET_PATTERN.matcher(petText);
+                if (explicitPetMatcher.matches()) {
                     try {
-                        int level = Integer.parseInt(pet.group(1));
-                        String details = pet.group(2).trim();
+                        int level = Integer.parseInt(explicitPetMatcher.group(1));
+                        String details = explicitPetMatcher.group(2).trim();
                         String rarity = findRarity(details);
                         String name = removeRarity(details, rarity);
                         if (isKnownPet(name)) {
