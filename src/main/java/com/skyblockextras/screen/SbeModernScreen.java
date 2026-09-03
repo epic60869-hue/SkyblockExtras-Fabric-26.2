@@ -25,9 +25,7 @@ public class SbeModernScreen extends Screen {
             "Floral Gelatin", "Helianthus", "Melon Juice", "Salted Sunflower Seeds", "Squash"
     };
 
-    public SbeModernScreen(Screen parent) {
-        this(parent, "About");
-    }
+    public SbeModernScreen(Screen parent) { this(parent, "About"); }
 
     public SbeModernScreen(Screen parent, String category) {
         super(Component.literal("Skyblock Extras"));
@@ -49,23 +47,19 @@ public class SbeModernScreen extends Screen {
         top = (height - heightPanel) / 2;
 
         addRenderableWidget(new BackgroundWidget());
-
         int sidebarX = left + 14;
         int sidebarY = top + 64;
         int sidebarW = 190;
         int sidebarH = heightPanel - 78;
         addRenderableWidget(new PanelWidget(sidebarX, sidebarY, sidebarW, sidebarH, 0));
-
         addLabel("SKYBLOCK EXTRAS", sidebarX + 14, sidebarY + 14, 0xFFFFFFFF, true);
         addLabel("CONFIGURATION", sidebarX + 14, sidebarY + 29, 0xFF8D8E99, false);
 
         for (int i = 0; i < CATEGORIES.length; i++) {
             String selected = CATEGORIES[i];
-            addRenderableWidget(new NavButton(
-                    sidebarX + 9, sidebarY + 54 + i * 42, sidebarW - 18, 34,
+            addRenderableWidget(new NavButton(sidebarX + 9, sidebarY + 54 + i * 42, sidebarW - 18, 34,
                     selected, selected.equals(category),
-                    () -> Minecraft.getInstance().gui.setScreen(new SbeModernScreen(parent, selected))
-            ));
+                    () -> Minecraft.getInstance().gui.setScreen(new SbeModernScreen(parent, selected))));
         }
 
         int contentX = sidebarX + sidebarW + 12;
@@ -80,7 +74,6 @@ public class SbeModernScreen extends Screen {
             case "Pet" -> buildPet(contentX, contentY, contentW, contentH);
             default -> buildAbout(contentX, contentY, contentW, contentH);
         }
-
         addRenderableWidget(new BottomButton(left + widthPanel - 105, top + heightPanel - 38, 88, 25, "Done", this::onClose));
     }
 
@@ -88,42 +81,68 @@ public class SbeModernScreen extends Screen {
         addTitle(x, y, "About", "Skyblock Extras configuration");
         addCard(x + 16, y + 72, w - 32, 106, "Skyblock Extras", "A lightweight client-side SkyBlock utility mod.", "v0.1.2");
         addCard(x + 16, y + 190, w - 32, 106, "Modern configuration", "Manage your HUD, farming RNG tracking and pet display from one place.", "FABRIC 26.2");
-        addCard(x + 16, y + 308, w - 32, 106, "HUD editor", "Use the position editors to drag overlays and resize them with the mouse wheel.", "HUD");
+        addCard(x + 16, y + 308, w - 32, 106, "HUD editor", "Drag overlays and use the mouse wheel to resize them.", "HUD");
     }
 
     private void buildGui(int x, int y, int w, int h) {
         SbeConfig c = SkyblockExtrasClient.CONFIG;
-        addTitle(x, y, "GUI", "HUD visibility, position and scaling");
-
+        addTitle(x, y, "GUI", "HUD visibility, background, scale and positioning");
         int cy = y + 69;
+
         addSetting(x + 16, cy, w - 32, 48, "Pet Overlay", "Display the active pet HUD.", () -> c.petOverlayEnabled,
                 () -> toggle(() -> c.petOverlayEnabled = !c.petOverlayEnabled));
         cy += 56;
+        addSetting(x + 16, cy, w - 32, 48, "Pet Background", "Show the dark panel behind the pet HUD.", () -> c.petBackgroundEnabled,
+                () -> toggle(() -> c.petBackgroundEnabled = !c.petBackgroundEnabled));
+        cy += 56;
         addSetting(x + 16, cy, w - 32, 48, "RNG Drop Overlay", "Show a notification when a tracked RNG drop is found.", () -> c.rngDropOverlayEnabled,
                 () -> toggle(() -> c.rngDropOverlayEnabled = !c.rngDropOverlayEnabled));
+        cy += 56;
+        addSetting(x + 16, cy, w - 32, 48, "RNG Background", "Show the panel behind RNG drop announcements.", () -> c.rngDropOverlayBackgroundEnabled,
+                () -> toggle(() -> c.rngDropOverlayBackgroundEnabled = !c.rngDropOverlayBackgroundEnabled));
         cy += 64;
 
-        addEditorCard(x + 16, cy, w - 32, "Pet Overlay Position", "Drag the pet HUD and use the mouse wheel to resize it.",
+        addEditorCard(x + 16, cy, w - 32, "Pet Overlay Position & Scale", "Drag the pet HUD and use the mouse wheel to resize it.",
                 "EDIT", () -> Minecraft.getInstance().gui.setScreen(new PositionEditorScreen(this)));
         cy += 72;
-        addEditorCard(x + 16, cy, w - 32, "RNG Drop Position", "Drag the RNG announcement to the position you want.",
+        addEditorCard(x + 16, cy, w - 32, "RNG Drop Position & Scale", "Drag the RNG announcement and use the mouse wheel to resize it.",
                 "EDIT", () -> Minecraft.getInstance().gui.setScreen(new RngDropPositionEditorScreen(this)));
+        cy += 72;
+
+        addCycleCard(x + 16, cy, w - 32, "RNG Price Formatting", "Choose how the drop price is displayed.",
+                () -> priceFormatLabel(c.rngDropPriceFormat), () -> cyclePriceFormat(c));
+    }
+
+    private String priceFormatLabel(String format) {
+        if (format == null) return "SHORT";
+        return switch (format.toUpperCase()) {
+            case "FULL" -> "FULL";
+            case "COINS" -> "COINS";
+            default -> "SHORT";
+        };
+    }
+
+    private void cyclePriceFormat(SbeConfig c) {
+        String current = priceFormatLabel(c.rngDropPriceFormat);
+        c.rngDropPriceFormat = switch (current) {
+            case "SHORT" -> "FULL";
+            case "FULL" -> "COINS";
+            default -> "SHORT";
+        };
+        c.save();
     }
 
     private void buildFarming(int x, int y, int w, int h) {
         SbeConfig c = SkyblockExtrasClient.CONFIG;
         addTitle(x, y, "Farming RNG", "Persistent timers for selected rare farming drops");
-
         int cy = y + 69;
         addSetting(x + 16, cy, w - 32, 48, "Farming RNG", "Master switch for all farming RNG tracking.", () -> c.farmingRngEnabled,
                 () -> toggle(() -> c.farmingRngEnabled = !c.farmingRngEnabled));
         cy += 56;
-
         addSetting(x + 16, cy, w - 32, 42, "Harvest Feast", "Track only the configured Harvest Feast drops.", () -> c.harvestFeastEnabled,
                 () -> toggle(() -> c.harvestFeastEnabled = !c.harvestFeastEnabled));
         cy += 49;
 
-        // Compact two-column list keeps all 17 exact user-provided drops visible.
         int gridX = x + 16;
         int gridW = w - 32;
         int gap = 6;
@@ -140,7 +159,6 @@ public class SbeModernScreen extends Screen {
                     () -> toggle(() -> c.harvestFeastDrops.put(item, !c.harvestFeastDrops.getOrDefault(item, true))));
         }
         cy = listTop + rows * rowH + 10;
-
         addSetting(x + 16, cy, w - 32, 42, "Slugs", "Enable slug RNG tracking.", () -> c.slugEnabled,
                 () -> toggle(() -> c.slugEnabled = !c.slugEnabled));
         cy += 47;
@@ -149,21 +167,19 @@ public class SbeModernScreen extends Screen {
         addSmallToggle(x + 22 + (w - 38) / 2, cy, (w - 38) / 2, "Legendary Slug", () -> c.legendarySlug,
                 () -> toggle(() -> c.legendarySlug = !c.legendarySlug));
         cy += 28;
-
         addSetting(x + 16, cy, w - 32, 42, "Dyes", "Enable farming-related dye tracking.", () -> c.dyesEnabled,
                 () -> toggle(() -> c.dyesEnabled = !c.dyesEnabled));
-
-        // The individual dye names are intentionally not invented; the config supports them
-        // once the exact dye drop list is supplied.
     }
 
     private void buildPet(int x, int y, int w, int h) {
         SbeConfig c = SkyblockExtrasClient.CONFIG;
         addTitle(x, y, "Pet", "Configure the active pet overlay");
-
         int cy = y + 69;
         addSetting(x + 16, cy, w - 32, 44, "Pet Overlay", "Display the active pet information.", () -> c.petOverlayEnabled,
                 () -> toggle(() -> c.petOverlayEnabled = !c.petOverlayEnabled));
+        cy += 51;
+        addSetting(x + 16, cy, w - 32, 44, "Pet Background", "Show the HUD background panel.", () -> c.petBackgroundEnabled,
+                () -> toggle(() -> c.petBackgroundEnabled = !c.petBackgroundEnabled));
         cy += 51;
         addSetting(x + 16, cy, w - 32, 44, "Pet Icon", "Show the pet icon.", () -> c.showPetIcon,
                 () -> toggle(() -> c.showPetIcon = !c.showPetIcon));
@@ -171,7 +187,7 @@ public class SbeModernScreen extends Screen {
         addSetting(x + 16, cy, w - 32, 44, "Pet Level", "Show the pet level and rarity.", () -> c.showPetLevel,
                 () -> toggle(() -> c.showPetLevel = !c.showPetLevel));
         cy += 51;
-        addSetting(x + 16, cy, w - 32, 44, "Pet Progress", "Show current-level XP progress.", () -> c.showPetProgress,
+        addSetting(x + 16, cy, w - 32, 44, "Pet Progress", "Show the current pet XP progress bar.", () -> c.showPetProgress,
                 () -> toggle(() -> c.showPetProgress = !c.showPetProgress));
         cy += 51;
         addSetting(x + 16, cy, w - 32, 44, "Pet XP", "Show total pet XP.", () -> c.showPetXp,
@@ -215,6 +231,13 @@ public class SbeModernScreen extends Screen {
         addLabel(title, x + 14, y + 12, 0xFFE5E5EA, true);
         addLabel(desc, x + 14, y + 34, 0xFF9798A3, false);
         addRenderableWidget(new BottomButton(x + w - 76, y + 19, 61, 24, button, action));
+    }
+
+    private void addCycleCard(int x, int y, int w, String title, String desc, java.util.function.Supplier<String> value, Runnable action) {
+        addRenderableWidget(new CardWidget(x, y, w, 62));
+        addLabel(title, x + 14, y + 12, 0xFFE5E5EA, true);
+        addLabel(desc, x + 14, y + 34, 0xFF9798A3, false);
+        addRenderableWidget(new BottomButton(x + w - 76, y + 19, 61, 24, value.get(), action));
     }
 
     private void addLabel(String text, int x, int y, int color, boolean bold) {
