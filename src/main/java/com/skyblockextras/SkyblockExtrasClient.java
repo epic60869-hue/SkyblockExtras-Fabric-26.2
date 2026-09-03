@@ -4,7 +4,7 @@ import com.skyblockextras.config.SbeConfig;
 import com.skyblockextras.pet.PetOverlay;
 import com.skyblockextras.rng.RngDropOverlay;
 import com.skyblockextras.rng.RngTracker;
-import com.skyblockextras.screen.SbeScreen;
+import com.skyblockextras.screen.SbeModernScreen;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -30,8 +30,6 @@ public class SkyblockExtrasClient implements ClientModInitializer {
         RNG = new RngTracker(CONFIG);
         PET = new PetOverlay(CONFIG);
         RNG_DROP_OVERLAY = new RngDropOverlay(CONFIG);
-
-        System.out.println("[SBE] Registering client commands...");
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> {
             System.out.println("[SBE] Client command dispatcher initialized.");
@@ -91,7 +89,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
 
     private static int openSettings(Minecraft minecraft) {
         if (minecraft == null) return 0;
-        minecraft.execute(() -> minecraft.gui.setScreen(new SbeScreen(null)));
+        minecraft.execute(() -> minecraft.gui.setScreen(new SbeModernScreen(null)));
         return 1;
     }
 }
