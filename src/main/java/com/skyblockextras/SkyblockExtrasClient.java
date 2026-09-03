@@ -50,7 +50,6 @@ public class SkyblockExtrasClient implements ClientModInitializer {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft.player == null) return;
             if (RNG != null) RNG.handle(message);
-            if (PET != null) PET.handleMessage(message);
         });
 
         ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) -> {
@@ -58,7 +57,6 @@ public class SkyblockExtrasClient implements ClientModInitializer {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft.player == null) return;
             if (RNG != null) RNG.handle(message);
-            if (PET != null) PET.handleMessage(message);
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
