@@ -96,15 +96,12 @@ public class PetOverlay {
         StringBuilder localText = new StringBuilder();
         StringBuilder fallbackText = new StringBuilder();
 
-        // IMPORTANT: prefer the local player's PlayerInfo. The previous implementation
-        // took the first matching Pet: widget from the whole tab list, which can leave the
-        // HUD stuck on the old pet after a loadout swap.
         UUID localUuid = client.player.getUUID();
         for (PlayerInfo info : players) {
             Component display = info.getTabListDisplayName();
             if (display == null) continue;
             String text = display.getString();
-            if (info.getProfile() != null && localUuid.equals(info.getProfile().getId())) {
+            if (info.getProfile() != null && localUuid.equals(info.getProfile().id())) {
                 localInfo = info;
                 localText.append(text).append('\n');
             }
@@ -119,8 +116,6 @@ public class PetOverlay {
             }
         }
 
-        // Some Hypixel tab implementations don't attach the whole widget to the local
-        // PlayerInfo. Keep a fallback scan, but prefer a Pet: widget over arbitrary rows.
         parseTabText(fallbackText.toString());
     }
 
@@ -134,7 +129,6 @@ public class PetOverlay {
         if (raw == null || raw.isBlank()) return;
         String[] lines = raw.split("\\R");
 
-        // First pass: exact Pet: header. This is the most reliable Hypixel widget marker.
         for (int i = 0; i < lines.length; i++) {
             String line = stripFormatting(lines[i]);
             if (line.equalsIgnoreCase("Pet:") || line.toLowerCase(Locale.ROOT).startsWith("pet:")) {
@@ -156,7 +150,6 @@ public class PetOverlay {
             }
         }
 
-        // Second pass: direct [Lvl N] pet rows. Only accept known pet names.
         for (int i = 0; i < lines.length; i++) {
             ParsedPet parsed = parsePetLine(stripFormatting(lines[i]));
             if (parsed != null) {
@@ -212,8 +205,6 @@ public class PetOverlay {
 
         if (progress >= 0) tabProgress = progress;
 
-        // If TAB says the equipped pet changed, immediately restore that pet's cached
-        // held item/icon instead of carrying the previous pet's state across the swap.
         if (!petName.equalsIgnoreCase(oldPet)) {
             PetCache newCache = petCache.get(cacheKey(petName));
             if (newCache != null) {
@@ -493,7 +484,7 @@ public class PetOverlay {
 
         int y = 0;
         String levelText = config.showPetLevel ? "[Lvl " + displayLevel() + "] " : "";
-        if (!levelText.isEmpty()) graphics.text(client.font, Component.literal(levelText), textX, y, 0xFFFFFFFF, true);
+        if (!levelText.isEmpty()) graphics.text(client.font, Component.literal(levelText), textX, y, 0xFFAAAAAA, true);
         int nameX = textX + (levelText.isEmpty() ? 0 : client.font.width(levelText));
         graphics.text(client.font, Component.literal(petName), nameX, y, rarityColor(), true);
         y += 12;
