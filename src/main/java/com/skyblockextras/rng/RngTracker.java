@@ -16,10 +16,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class RngTracker {
+    private static final long DUPLICATE_WINDOW_MS = 1500L;
+    private static final Gson GSON = new Gson();
+
     private final SbeConfig config;
     private final Map<String, Long> lastDrops = new LinkedHashMap<>();
     private final Map<String, String> exactDrops = new LinkedHashMap<>();
-    private static final Gson GSON = new Gson();
+    private final Map<String, Long> recentlyHandled = new LinkedHashMap<>();
 
     public RngTracker(SbeConfig config) {
         this.config = config;
@@ -36,7 +39,6 @@ public class RngTracker {
             }
             JsonObject root = GSON.fromJson(new InputStreamReader(stream, StandardCharsets.UTF_8), JsonObject.class);
             if (root == null) return;
-
             JsonObject farming = getObject(root, "farming");
             if (farming != null) {
                 addArray(farming, "harvestFeast");
@@ -89,19 +91,20 @@ public class RngTracker {
         if (item == null || item.isBlank()) return false;
         if (item.equalsIgnoreCase("Epic Slug")) return config.slugEnabled && config.epicSlug;
         if (item.equalsIgnoreCase("Legendary Slug")) return config.slugEnabled && config.legendarySlug;
-
         Boolean harvest = config.harvestFeastDrops.get(item);
         if (harvest != null) return config.harvestFeastEnabled && harvest;
-
         Boolean dye = config.farmingDyes.get(item);
         if (dye != null) return config.dyesEnabled && dye;
-
-        // Non-farming categories are left available for future configuration pages.
         return true;
     }
 
     private void recordDrop(String item) {
         long now = System.currentTimeMillis();
+        Long recent = recentlyHandled.get(item);
+        if (recent != null && now - recent < DUPLICATE_WINDOW_MS) return;
+        recentlyHandled.put(item, now);
+        recentlyHandled.entrySet().removeIf(entry -> now - entry.getValue() >= DUPLICATE_WINDOW_MS);
+
         Long previous = lastDrops.put(item, now);
         config.setLastDrop(item, now);
         config.save();
