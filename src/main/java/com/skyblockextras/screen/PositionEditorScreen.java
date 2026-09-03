@@ -58,7 +58,7 @@ public class PositionEditorScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
         if (event.button() == 0) {
             int px = previewX();
             int py = previewY();
