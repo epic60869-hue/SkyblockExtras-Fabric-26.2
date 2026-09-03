@@ -17,7 +17,6 @@ import java.util.regex.Pattern;
 /** Clean SkyBlock pet HUD. Pet data is read from Hypixel's tab list. */
 public class PetOverlay {
     private final SbeConfig config;
-
     private String petName = "No Pet";
     private String petRarity = "";
     private int petLevel = 1;
@@ -31,9 +30,7 @@ public class PetOverlay {
     private static final Pattern XP_PATTERN = Pattern.compile("(?i)pet\\s*xp\\s*[:：]\\s*([0-9,.]+(?:[kmb])?)(?:\\s*/\\s*([0-9,.]+(?:[kmb])?))?");
     private static final Pattern ITEM_PATTERN = Pattern.compile("(?i)(?:held item|pet item)\\s*[:：]\\s*(.+)");
 
-    public PetOverlay(SbeConfig config) {
-        this.config = config;
-    }
+    public PetOverlay(SbeConfig config) { this.config = config; }
 
     public void tick(Minecraft client) {
         if (!config.petOverlayEnabled || client == null || client.player == null) return;
@@ -60,11 +57,9 @@ public class PetOverlay {
         boolean foundPet = false;
         long tabXp = -1L;
         long tabRequired = -1L;
-
         for (String original : lines) {
             String line = stripFormatting(original);
             if (line.isBlank()) continue;
-
             Matcher xp = XP_PATTERN.matcher(line);
             if (xp.find()) {
                 long parsed = parseNumber(xp.group(1));
@@ -74,10 +69,8 @@ public class PetOverlay {
                     if (parsedRequired >= 0L) tabRequired = parsedRequired;
                 }
             }
-
             Matcher item = ITEM_PATTERN.matcher(line);
             if (item.find()) petItem = cleanItemName(item.group(1));
-
             int petIndex = indexOfIgnoreCase(line, "pet:");
             if (petIndex >= 0) {
                 String petText = line.substring(petIndex + 4).trim();
@@ -96,34 +89,20 @@ public class PetOverlay {
                 }
             }
         }
-
         if (!foundPet) return;
         if (tabXp >= 0L) currentXp = tabXp;
         requiredXp = tabRequired >= 0L ? tabRequired : xpToLevelCap(petLevel, petRarity, petName);
-        if (petLevel >= maxPetLevel(petName)) {
-            overflowXp = Math.max(0L, currentXp - requiredXp);
-        } else {
-            overflowXp = 0L;
-        }
+        if (petLevel >= maxPetLevel(petName)) overflowXp = Math.max(0L, currentXp - requiredXp);
+        else overflowXp = 0L;
     }
 
-    private static String cleanItemName(String item) {
-        return item.replaceAll("\\s+", " ").trim();
-    }
-
-    private static int indexOfIgnoreCase(String text, String needle) {
-        return text.toLowerCase(Locale.ROOT).indexOf(needle.toLowerCase(Locale.ROOT));
-    }
-
-    private static String stripFormatting(String s) {
-        return s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim();
-    }
+    private static String cleanItemName(String item) { return item.replaceAll("\\s+", " ").trim(); }
+    private static int indexOfIgnoreCase(String text, String needle) { return text.toLowerCase(Locale.ROOT).indexOf(needle.toLowerCase(Locale.ROOT)); }
+    private static String stripFormatting(String s) { return s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim(); }
 
     private static String findRarity(String text) {
         String[] rarities = {"Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common"};
-        for (String rarity : rarities) {
-            if (text.toLowerCase(Locale.ROOT).contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
-        }
+        for (String rarity : rarities) if (text.toLowerCase(Locale.ROOT).contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
         return "";
     }
 
@@ -175,7 +154,7 @@ public class PetOverlay {
         if (n.contains("turtle")) return new ItemStack(Items.TURTLE_EGG);
         if (n.contains("bee")) return new ItemStack(Items.HONEYCOMB);
         if (n.contains("wolf") || n.contains("spirit")) return new ItemStack(Items.BONE);
-        if (n.contains("sheep")) return new ItemStack(Items.WHITE_WOOL);
+        if (n.contains("sheep")) return new ItemStack(net.minecraft.world.level.block.Blocks.WHITE_WOOL.asItem());
         if (n.contains("pig")) return new ItemStack(Items.PORKCHOP);
         if (n.contains("parrot")) return new ItemStack(Items.COOKIE);
         if (n.contains("bat")) return new ItemStack(Items.PHANTOM_MEMBRANE);
@@ -193,14 +172,11 @@ public class PetOverlay {
         return new ItemStack(Items.PLAYER_HEAD);
     }
 
-    /** Maps all Pet Items currently listed by the Hypixel Wiki to a stable vanilla base icon. */
+    /** Maps every Pet Item currently listed by the Hypixel Wiki to a stable base icon. */
     private ItemStack petItemIcon() {
         String n = petItem.toLowerCase(Locale.ROOT).replaceAll("§.", "").trim();
         if (n.isBlank()) return ItemStack.EMPTY;
-
-        if (n.contains("all skills exp boost") || n.contains("combat exp boost") || n.contains("farming exp boost")
-                || n.contains("fishing exp boost") || n.contains("foraging exp boost") || n.contains("mining exp boost"))
-            return new ItemStack(Items.ENCHANTED_BOOK);
+        if (n.contains("all skills exp boost") || n.contains("combat exp boost") || n.contains("farming exp boost") || n.contains("fishing exp boost") || n.contains("foraging exp boost") || n.contains("mining exp boost")) return new ItemStack(Items.ENCHANTED_BOOK);
         if (n.contains("antique remedies")) return new ItemStack(Items.GOLD_INGOT);
         if (n.contains("bejeweled collar")) return new ItemStack(Items.DIAMOND);
         if (n.contains("big teeth") || n.contains("bigger teeth") || n.contains("gold claws")) return new ItemStack(Items.GOLD_INGOT);
@@ -221,7 +197,7 @@ public class PetOverlay {
         if (n.contains("grandma's knitting needle")) return new ItemStack(Items.STRING);
         if (n.contains("green bandana")) return new ItemStack(Items.GREEN_DYE);
         if (n.contains("hardened scales") || n.contains("reinforced scales")) return new ItemStack(Items.IRON_INGOT);
-        if (n.contains("hephaestus plushie")) return new ItemStack(Items.WHITE_WOOL);
+        if (n.contains("hephaestus plushie")) return new ItemStack(net.minecraft.world.level.block.Blocks.WHITE_WOOL.asItem());
         if (n.contains("hephaestus relic") || n.contains("hephaestus remedies")) return new ItemStack(Items.NETHERITE_INGOT);
         if (n.contains("hephaestus souvenir")) return new ItemStack(Items.GOLD_NUGGET);
         if (n.contains("hephaestus urn")) return new ItemStack(Items.FLOWER_POT);
@@ -248,30 +224,22 @@ public class PetOverlay {
         float scale = config.petScale <= 0 ? 1.0f : config.petScale;
         int width = getOverlayWidth();
         int height = getOverlayHeight();
-
         var pose = graphics.pose();
         pose.pushMatrix();
         pose.translate(config.petX, config.petY);
         pose.scale(scale, scale);
-
         if (config.petBackgroundEnabled) {
             graphics.fill(-6, -6, width + 6, height + 6, 0xD9101117);
             graphics.outline(-6, -6, width + 6, height + 6, 0xFF41434E);
             graphics.fill(-5, -5, -2, height + 5, rarityColor());
         }
-
         int textX = 0;
-        if (config.showPetIcon) {
-            graphics.item(petIcon(), 0, 0);
-            textX = 20;
-        }
-
+        if (config.showPetIcon) { graphics.item(petIcon(), 0, 0); textX = 20; }
         StringBuilder name = new StringBuilder();
         if (config.showPetLevel) name.append("[Lvl ").append(petLevel).append("] ");
         name.append(petName);
         if (!petRarity.isBlank()) name.append(" ").append(petRarity);
         graphics.text(client.font, Component.literal(name.toString()), textX, 1, 0xFFFFFFFF, true);
-
         int y = 14;
         if (config.showPetProgress) {
             int barWidth = 145;
@@ -310,7 +278,6 @@ public class PetOverlay {
     }
 
     private int getOverlayWidth() { return config.showPetIcon ? 220 : 195; }
-
     private int getOverlayHeight() {
         int h = 19;
         if (config.showPetProgress) h += 8;
@@ -319,38 +286,24 @@ public class PetOverlay {
         if (config.showPetItem && !petItem.isBlank()) h += 14;
         return h;
     }
-
     private String formatNumber(long number) {
         if (number >= 1_000_000_000L) return String.format("%.2fB", number / 1_000_000_000.0);
         if (number >= 1_000_000L) return String.format("%.2fM", number / 1_000_000.0);
         if (number >= 1_000L) return String.format("%.2fK", number / 1_000.0);
         return Long.toString(number);
     }
-
     public void setPet(String name, String rarity, int level) {
         if (name != null && !name.isBlank()) petName = name;
         if (rarity != null) petRarity = rarity;
         petLevel = Math.max(1, level);
     }
-
     public void setXp(long current, long required, long overflow) {
-        currentXp = Math.max(0, current);
-        requiredXp = Math.max(0, required);
-        overflowXp = Math.max(0, overflow);
+        currentXp = Math.max(0, current); requiredXp = Math.max(0, required); overflowXp = Math.max(0, overflow);
     }
-
     public void setPetItem(String item) { petItem = item == null ? "" : item; }
-
     public void clearPet() {
-        petName = "No Pet";
-        petRarity = "";
-        petLevel = 1;
-        currentXp = 0;
-        requiredXp = 25_353_230L;
-        overflowXp = 0;
-        petItem = "";
+        petName = "No Pet"; petRarity = ""; petLevel = 1; currentXp = 0; requiredXp = 25_353_230L; overflowXp = 0; petItem = "";
     }
-
     public String getPetName() { return petName; }
     public String getPetRarity() { return petRarity; }
     public int getPetLevel() { return petLevel; }
