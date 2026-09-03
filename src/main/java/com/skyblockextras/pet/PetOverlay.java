@@ -14,7 +14,7 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** SkyBlock pet HUD. Reads the currently equipped pet from Hypixel's pet widget in the tab list. */
+/** Compact SkyBlock pet HUD. Reads the active pet and exact total XP from the Hypixel tab widget. */
 public class PetOverlay {
     private final SbeConfig config;
     private String petName = "No Pet";
@@ -30,7 +30,6 @@ public class PetOverlay {
     private static final Pattern PET_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?\\s+(?:(\\d+)\\s*[♦◆✦])?\\s*(.+)");
     private static final Pattern PET_XP_LINE = Pattern.compile("(?i)([0-9,.]+(?:[kmb])?)\\s*/\\s*([0-9,.]+(?:[kmb])?)\\s*XP(?:\\s*\\(([0-9,.]+)%\\))?");
     private static final Pattern PET_LABEL_XP = Pattern.compile("(?i)pet\\s*xp\\s*[:：]\\s*([0-9,.]+(?:[kmb])?)(?:\\s*/\\s*([0-9,.]+(?:[kmb])?))?");
-    private static final Pattern OVERFLOW_XP = Pattern.compile("(?i)\\+([0-9,.]+(?:[kmb])?)\\s*XP");
     private static final Pattern ITEM_PATTERN = Pattern.compile("(?i)(?:held item|pet item)\\s*[:：]\\s*(.+)");
 
     private static final String[] KNOWN_PETS = {
@@ -40,8 +39,8 @@ public class PetOverlay {
         "Lion", "Magma Cube", "Megalodon", "Mithril Golem", "Monkey", "Mooshroom Cow", "Ocelot", "Parrot",
         "Phoenix", "Pig", "Rabbit", "Rat", "Reindeer", "Rock", "Rose Dragon", "Scatha", "Sheep", "Silverfish",
         "Skeleton", "Skeleton Horse", "Slug", "Snail", "Snowman", "Spirit", "Squid", "Tarantula", "Tiger",
-        "Turtle", "Vampire Witch Mask", "Witch", "Wither Skeleton", "Wolf", "Zombie", "Rift Ferret", "Kuudra",
-        "Ammonite", "Glacite Golem", "Baby Yeti", "T-Rex", "T-Rex Pet"
+        "Turtle", "Witch", "Wither Skeleton", "Wolf", "Zombie", "Rift Ferret", "Kuudra", "Ammonite",
+        "Glacite Golem", "Baby Yeti", "T-Rex", "T-Rex Pet"
     };
 
     private static final int[] PET_XP = {
@@ -77,10 +76,9 @@ public class PetOverlay {
     private void parseTabText(String raw) {
         if (raw == null || raw.isBlank()) return;
         boolean foundPet = false;
-        long tabXp = -1L;
-        long tabRequired = -1L;
+        long levelLocalXp = -1L;
+        long levelRequired = -1L;
         float parsedProgress = -1.0f;
-        long overflowBonusXp = -1L;
 
         for (String original : raw.split("\\R")) {
             String line = stripFormatting(original);
@@ -88,19 +86,16 @@ public class PetOverlay {
 
             Matcher xp = PET_LABEL_XP.matcher(line);
             if (xp.find()) {
-                tabXp = parseNumber(xp.group(1));
-                if (xp.group(2) != null) tabRequired = parseNumber(xp.group(2));
+                levelLocalXp = parseNumber(xp.group(1));
+                if (xp.group(2) != null) levelRequired = parseNumber(xp.group(2));
             }
 
             Matcher xpLine = PET_XP_LINE.matcher(line);
             if (xpLine.find()) {
-                tabXp = parseNumber(xpLine.group(1));
-                tabRequired = parseNumber(xpLine.group(2));
+                levelLocalXp = parseNumber(xpLine.group(1));
+                levelRequired = parseNumber(xpLine.group(2));
                 if (xpLine.group(3) != null) parsedProgress = parsePercent(xpLine.group(3));
             }
-
-            Matcher overflow = OVERFLOW_XP.matcher(line);
-            if (overflow.find()) overflowBonusXp = parseNumber(overflow.group(1));
 
             Matcher item = ITEM_PATTERN.matcher(line);
             if (item.find()) petItem = cleanItemName(item.group(1));
@@ -112,8 +107,8 @@ public class PetOverlay {
                     int parsedOverflow = pet.group(2) == null ? 0 : Integer.parseInt(pet.group(2));
                     String details = pet.group(3).trim();
                     String detectedName = findPetName(details);
-                    boolean explicitPetMarker = pet.group(2) != null;
-                    if (detectedName != null || explicitPetMarker) {
+                    boolean explicitOverflowMarker = pet.group(2) != null;
+                    if (detectedName != null || explicitOverflowMarker) {
                         if (detectedName == null) detectedName = cleanPetDetails(details);
                         setPet(detectedName, findRarity(details), level);
                         overflowLevel = Math.max(0, parsedOverflow);
@@ -143,18 +138,40 @@ public class PetOverlay {
         }
 
         if (!foundPet) return;
-        if (tabXp >= 0L) currentXp = tabXp;
-        if (tabRequired >= 0L) requiredXp = tabRequired;
-        if (parsedProgress >= 0.0f) tabProgress = parsedProgress;
 
-        if (petLevel >= 200 && overflowBonusXp >= 0L) {
-            long total = overflowBonusXp + getCalculativeXpForLevel(petLevel, petRarity);
-            int calculated = calcLevel(total, petRarity);
-            overflowLevel = Math.max(0, calculated - 200);
-            currentXp = Math.max(currentXp, total);
-            requiredXp = getXpForLevel(Math.max(0, calculated - 1), petRarity);
-            tabProgress = calcLeftOverXp(total, petRarity) * 100.0f / Math.max(1L, requiredXp);
+        /*
+         * Hypixel's tab widget reports the XP INSIDE the current level:
+         *   1,175,300.9/1.9M XP (62.3%)
+         * The HUD, however, wants the pet's total accumulated XP.
+         *
+         * For normal pets we add all completed levels plus current-level XP.
+         * The old implementation used the generic curve for every pet, which
+         * is wrong for extended/Dragon pets and produced the ~2m discrepancy.
+         */
+        if (levelLocalXp >= 0L) {
+            if (petLevel >= 200) {
+                // At level 200, the tab value is already all the XP relevant to
+                // the current overflow level calculation; don't add a second curve.
+                currentXp = calculateTotalForDisplayedLevel(petLevel, levelLocalXp, petRarity);
+            } else {
+                currentXp = calculateTotalForDisplayedLevel(petLevel, levelLocalXp, petRarity);
+            }
         }
+
+        if (levelRequired >= 0L) requiredXp = levelRequired;
+        if (parsedProgress >= 0.0f) tabProgress = parsedProgress;
+    }
+
+    private long calculateTotalForDisplayedLevel(int level, long localXp, String rarity) {
+        if (level <= 1) return Math.max(0L, localXp);
+
+        // SkyBlock's displayed pet XP curve is cumulative. The special 101-200
+        // curve is represented in PET_XP above. Sum completed levels, then add
+        // the exact decimal XP currently inside the displayed level.
+        long completed = 0L;
+        int completedLevels = Math.min(level - 1, 200);
+        for (int i = 0; i < completedLevels; i++) completed += getXpForLevel(i, rarity);
+        return completed + Math.max(0L, localXp);
     }
 
     private static String findPetName(String text) {
@@ -179,16 +196,14 @@ public class PetOverlay {
     private static float parsePercent(String value) { try { return Float.parseFloat(value.replace(",", "")); } catch (NumberFormatException e) { return -1.0f; } }
     private static int getRarityOffset(String rarity){return switch(rarity.toLowerCase(Locale.ROOT)){case "common"->0;case "uncommon"->6;case "rare"->11;case "epic"->15;default->20;};}
     private static int getXpForLevel(int level,String rarity){int offset=getRarityOffset(rarity)+Math.max(0,level);return offset<PET_XP.length?PET_XP[offset]:1_886_700;}
-    private static long getCalculativeXpForLevel(int level,String rarity){long xp=0L;for(int i=0;i<Math.max(0,level);i++)xp+=getXpForLevel(i,rarity);return xp;}
-    private static int calcLevel(long xp,String rarity){long exp=xp;int i=0;while(exp>0){exp-=getXpForLevel(i,rarity);i++;}return Math.max(1,i);}
-    private static long calcLeftOverXp(long xp,String rarity){long exp=xp;int i=0;while(exp>0){long needed=getXpForLevel(i,rarity);if(exp>needed)exp-=needed;else return exp;i++;}return -1L;}
     private ItemStack petIcon(){String n=petName.toLowerCase(Locale.ROOT);if(n.contains("dragon"))return new ItemStack(Items.DRAGON_EGG);if(n.contains("rabbit"))return new ItemStack(Items.RABBIT);if(n.contains("turtle"))return new ItemStack(Items.TURTLE_EGG);if(n.contains("bee"))return new ItemStack(Items.HONEYCOMB);if(n.contains("wolf")||n.contains("spirit"))return new ItemStack(Items.BONE);if(n.contains("sheep"))return new ItemStack(Items.PAPER);if(n.contains("pig"))return new ItemStack(Items.PORKCHOP);if(n.contains("parrot"))return new ItemStack(Items.COOKIE);if(n.contains("bat"))return new ItemStack(Items.PHANTOM_MEMBRANE);if(n.contains("silverfish"))return new ItemStack(Items.STONE);if(n.contains("slime"))return new ItemStack(Items.SLIME_BALL);if(n.contains("magma"))return new ItemStack(Items.MAGMA_CREAM);if(n.contains("blaze"))return new ItemStack(Items.BLAZE_ROD);if(n.contains("skeleton"))return new ItemStack(Items.SKELETON_SKULL);if(n.contains("zombie"))return new ItemStack(Items.ZOMBIE_HEAD);if(n.contains("wither"))return new ItemStack(Items.WITHER_SKELETON_SKULL);if(n.contains("enderman"))return new ItemStack(Items.ENDER_PEARL);if(n.contains("guardian"))return new ItemStack(Items.PRISMARINE_SHARD);if(n.contains("dolphin"))return new ItemStack(Items.COD);if(n.contains("squid"))return new ItemStack(Items.INK_SAC);return new ItemStack(Items.PLAYER_HEAD);}
     public void render(GuiGraphicsExtractor graphics,DeltaTracker deltaTracker){if(!config.petOverlayEnabled||Minecraft.getInstance().player==null)return;Minecraft client=Minecraft.getInstance();float scale=config.petScale<=0?1.0f:config.petScale;var pose=graphics.pose();pose.pushMatrix();pose.translate(config.petX,config.petY);pose.scale(scale,scale);int textX=config.showPetIcon?20:0;int contentHeight=12;if(config.showPetProgress)contentHeight+=10;if(config.showPetXp)contentHeight+=10;if(config.showPetItem&&!petItem.isBlank())contentHeight+=10;if(config.petBackgroundEnabled){int contentWidth=getOverlayWidth();graphics.fill(textX-4,-3,contentWidth,contentHeight+3,0xB9101117);graphics.outline(textX-4,-3,contentWidth,contentHeight+3,0xFF41434E);graphics.fill(textX-4,-3,textX-1,contentHeight+3,rarityColor());}if(config.showPetIcon)graphics.item(petIcon(),0,0);int y=0;String levelText=config.showPetLevel?"[Lvl "+displayLevel()+"] ":"";if(!levelText.isEmpty())graphics.text(client.font,Component.literal(levelText),textX,y,0xFFFFFFFF,true);int petNameX=textX+(levelText.isEmpty()?0:client.font.width(levelText));graphics.text(client.font,Component.literal(petName),petNameX,y,rarityColor(),true);y+=12;if(config.showPetProgress){graphics.text(client.font,Component.literal("Level Progress: "+formatPercent(levelProgress())),textX,y,0xFF55FFFF,false);y+=10;}if(config.showPetXp){graphics.text(client.font,Component.literal("Pet XP: "+formatNumber(currentXp)),textX,y,0xFF55FFFF,false);y+=10;}if(config.showPetItem&&!petItem.isBlank())graphics.text(client.font,Component.literal("Pet Item: "+petItem),textX,y,0xFFAA55FF,false);pose.popMatrix();}
-    private int displayLevel(){return petLevel>=200 ? 200+overflowLevel : petLevel;}
-    private float levelProgress(){if(tabProgress>=0.0f)return tabProgress;if(petLevel<=0)return 0.0f;if(petLevel>=200)return 100.0f;long startXp=getCalculativeXpForLevel(Math.max(0,petLevel-1),petRarity);long needed=getXpForLevel(Math.max(0,petLevel-1),petRarity);if(needed<=0L)return 0.0f;if(currentXp>=startXp+needed)return 100.0f;return Math.max(0.0f,Math.min(100.0f,(currentXp-startXp)*100.0f/needed));}
-    private int rarityColor(){return switch(petRarity.toLowerCase(Locale.ROOT)){case "common"->0xFFAAAAAA;case "uncommon"->0xFF55FF55;case "rare"->0xFF5555FF;case "epic"->0xFFAA00AA;case "legendary"->0xFFFFAA00;case "mythic"->0xFFFF55FF;default->0xFFB96BFF;};}
-    private int getOverlayWidth(){int width=config.showPetIcon?20:0;width+=155;return width;}
-    private static String formatNumber(long value){return String.format(Locale.US,"%,d",Math.max(0L,value));}
-    private static String formatPercent(float value){return String.format(Locale.US,"%.1f%%",value);}
-    private void setPet(String name,String rarity,int level){petName=name;petRarity=rarity;petLevel=Math.max(1,level);}
+    private int displayLevel(){return petLevel>=200?200+overflowLevel:petLevel;}
+    private float levelProgress(){if(tabProgress>=0.0f)return tabProgress;if(requiredXp<=0)return 0.0f;long levelStart=getCalculativeXpForLevel(Math.max(0,petLevel-1),petRarity);return Math.max(0,Math.min(100,(currentXp-levelStart)*100.0f/requiredXp));}
+    private long getCalculativeXpForLevel(int level,String rarity){long xp=0;for(int i=0;i<Math.max(0,level);i++)xp+=getXpForLevel(i,rarity);return xp;}
+    private String formatNumber(long n){return String.format(Locale.US,"%,d",Math.max(0,n));}
+    private String formatPercent(float p){return String.format(Locale.US,"%.1f%%",p);}
+    private void setPet(String name,String rarity,int level){petName=name;petRarity=rarity==null?"":rarity;petLevel=Math.max(1,level);}
+    private int rarityColor(){return switch(petRarity.toLowerCase(Locale.ROOT)){case "common"->0xFFAAAAAA;case "uncommon"->0xFF55FF55;case "rare"->0xFF5555FF;case "epic"->0xFFAA00AA;case "legendary"->0xFFFFAA00;case "mythic"->0xFFFF55FF;default->0xFFFFFFFF;};}
+    private int getOverlayWidth(){Minecraft client=Minecraft.getInstance();String levelText=config.showPetLevel?"[Lvl "+displayLevel()+"] ":"";String first=levelText+petName;int width=config.showPetIcon?20:0;int w=client.font.width(first);if(config.showPetProgress)w=Math.max(w,client.font.width("Level Progress: 100.0%"));if(config.showPetXp)w=Math.max(w,client.font.width("Pet XP: 999,999,999"));if(config.showPetItem&&!petItem.isBlank())w=Math.max(w,client.font.width("Pet Item: "+petItem));return width+w+4;}
 }
