@@ -52,13 +52,12 @@ public class PositionEditorScreen extends Screen {
         SbeConfig c = SkyblockExtrasClient.CONFIG;
         int maxX = Math.max(0, width - previewWidth());
         int maxY = Math.max(0, height - previewHeight());
-
         c.petX = Math.max(0, Math.min(maxX, c.petX));
         c.petY = Math.max(0, Math.min(maxY, c.petY));
     }
 
     @Override
-public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (event.button() == 0) {
             int px = previewX();
             int py = previewY();
@@ -77,7 +76,7 @@ public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY
     }
 
     @Override
-    public boolean mouseDragged(MouseButtonEvent event, boolean doubleClick, double deltaX, double deltaY) {
+    public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
         if (dragging && event.button() == 0) {
             SbeConfig c = SkyblockExtrasClient.CONFIG;
             int newX = (int) Math.round(event.x() - dragOffsetX);
@@ -91,7 +90,7 @@ public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY
             c.save();
             return true;
         }
-        return super.mouseDragged(event, doubleClick, deltaX, deltaY);
+        return super.mouseDragged(event, deltaX, deltaY);
     }
 
     @Override
@@ -111,12 +110,10 @@ public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY
         int pw = previewWidth();
         int ph = previewHeight();
 
-        // Only resize when the mouse is over the overlay preview.
         if (mouseX >= px && mouseX <= px + pw
                 && mouseY >= py && mouseY <= py + ph
                 && verticalAmount != 0.0) {
             SbeConfig c = SkyblockExtrasClient.CONFIG;
-
             float oldScale = c.petScale;
             float step = verticalAmount > 0.0 ? 0.10f : -0.10f;
             float newScale = Math.max(0.50f, Math.min(3.00f, oldScale + step));
@@ -126,7 +123,6 @@ public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY
                 clampPosition();
                 c.save();
             }
-
             return true;
         }
 
