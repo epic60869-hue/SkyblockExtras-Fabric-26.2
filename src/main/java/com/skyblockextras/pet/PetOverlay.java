@@ -25,7 +25,6 @@ public class PetOverlay {
     private long requiredXp = 25_353_230L;
     private float tabProgress = -1.0f;
     private String petItem = "";
-    private int tabScanCooldown = 0;
 
     private static final Pattern PET_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?\\s+(?:(\\d+)\\s*[♦◆✦])?\\s*(.+)");
     private static final Pattern PET_XP_LINE = Pattern.compile("(?i)([0-9,.]+(?:[kmb])?)\\s*/\\s*([0-9,.]+(?:[kmb])?)\\s*XP(?:\\s*\\(([0-9,.]+)%\\))?");
@@ -55,10 +54,13 @@ public class PetOverlay {
 
     public PetOverlay(SbeConfig config) { this.config = config; }
 
+    /**
+     * Refresh every tick so changing the equipped pet is reflected immediately.
+     * The tab list is small enough that this is preferable to keeping stale pet
+     * state for several ticks after Hypixel changes the widget.
+     */
     public void tick(Minecraft client) {
         if (!config.petOverlayEnabled || client == null || client.player == null) return;
-        if (tabScanCooldown-- > 0) return;
-        tabScanCooldown = 5;
         readHypixelTab(client);
     }
 
@@ -79,6 +81,7 @@ public class PetOverlay {
         long levelLocalXp = -1L;
         long levelRequired = -1L;
         float parsedProgress = -1.0f;
+        String parsedPetItem = "";
 
         for (String original : raw.split("\\R")) {
             String line = stripFormatting(original);
@@ -98,7 +101,7 @@ public class PetOverlay {
             }
 
             Matcher item = ITEM_PATTERN.matcher(line);
-            if (item.find()) petItem = cleanItemName(item.group(1));
+            if (item.find()) parsedPetItem = cleanItemName(item.group(1));
 
             Matcher pet = PET_PATTERN.matcher(line);
             if (pet.find()) {
@@ -139,35 +142,14 @@ public class PetOverlay {
 
         if (!foundPet) return;
 
-        /*
-         * Hypixel's tab widget reports the XP INSIDE the current level:
-         *   1,175,300.9/1.9M XP (62.3%)
-         * The HUD, however, wants the pet's total accumulated XP.
-         *
-         * For normal pets we add all completed levels plus current-level XP.
-         * The old implementation used the generic curve for every pet, which
-         * is wrong for extended/Dragon pets and produced the ~2m discrepancy.
-         */
-        if (levelLocalXp >= 0L) {
-            if (petLevel >= 200) {
-                // At level 200, the tab value is already all the XP relevant to
-                // the current overflow level calculation; don't add a second curve.
-                currentXp = calculateTotalForDisplayedLevel(petLevel, levelLocalXp, petRarity);
-            } else {
-                currentXp = calculateTotalForDisplayedLevel(petLevel, levelLocalXp, petRarity);
-            }
-        }
-
+        if (!parsedPetItem.isBlank()) petItem = parsedPetItem;
+        if (levelLocalXp >= 0L) currentXp = calculateTotalForDisplayedLevel(petLevel, levelLocalXp, petRarity);
         if (levelRequired >= 0L) requiredXp = levelRequired;
         if (parsedProgress >= 0.0f) tabProgress = parsedProgress;
     }
 
     private long calculateTotalForDisplayedLevel(int level, long localXp, String rarity) {
         if (level <= 1) return Math.max(0L, localXp);
-
-        // SkyBlock's displayed pet XP curve is cumulative. The special 101-200
-        // curve is represented in PET_XP above. Sum completed levels, then add
-        // the exact decimal XP currently inside the displayed level.
         long completed = 0L;
         int completedLevels = Math.min(level - 1, 200);
         for (int i = 0; i < completedLevels; i++) completed += getXpForLevel(i, rarity);
