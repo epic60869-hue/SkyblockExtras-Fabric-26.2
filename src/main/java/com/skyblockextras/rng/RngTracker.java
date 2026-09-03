@@ -14,9 +14,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 public class RngTracker {
     private static final Gson GSON = new Gson();
+    private static final Set<String> HARVEST_FEAST_DROPS = Set.of(
+            "Aggourdian", "Botroot", "Cactus Flower", "Cane Knot", "Carrot Zest", "Cornucopia", "Cropie",
+            "Crystalized Moonlight", "Deepfries", "Designer Coffee Beans", "Feastfungus", "Fermento",
+            "Floral Gelatin", "Helianthus", "Melon Juice", "Salted Sunflower Seeds", "Squash"
+    );
 
     private final SbeConfig config;
     private final Map<String, Long> lastDrops = new LinkedHashMap<>();
@@ -91,15 +97,14 @@ public class RngTracker {
     }
 
     private boolean isHarvestFeastDrop(String item) {
-        return config.harvestFeastDrops != null && config.harvestFeastDrops.containsKey(item);
+        return HARVEST_FEAST_DROPS.contains(item);
     }
 
     private boolean isEnabled(String item) {
         if (item == null || item.isBlank()) return false;
+        if (isHarvestFeastDrop(item)) return config.harvestFeastEnabled;
         if (item.equalsIgnoreCase("Epic Slug")) return config.slugEnabled && config.epicSlug;
         if (item.equalsIgnoreCase("Legendary Slug")) return config.slugEnabled && config.legendarySlug;
-        Boolean harvest = config.harvestFeastDrops.get(item);
-        if (harvest != null) return config.harvestFeastEnabled && harvest;
         Boolean dye = config.farmingDyes.get(item);
         if (dye != null) return config.dyesEnabled && dye;
         return true;
@@ -118,6 +123,9 @@ public class RngTracker {
         }
         if (SkyblockExtrasClient.RNG_DROP_OVERLAY != null) {
             SkyblockExtrasClient.RNG_DROP_OVERLAY.show(item);
+        }
+        if (SkyblockExtrasClient.DISCORD_WEBHOOK != null) {
+            SkyblockExtrasClient.DISCORD_WEBHOOK.recordDrop(item);
         }
         System.out.println("[SBE RNG] " + item + " detected.");
     }
