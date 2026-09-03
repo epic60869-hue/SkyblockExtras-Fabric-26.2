@@ -88,9 +88,10 @@ public class RngTracker {
         String item = RngMessageMatcher.findDrop(rawMessage, exactDrops.keySet());
         if (item == null || !isEnabled(item)) return;
 
-        // Harvest Feast drops must use Hypixel's exact RARE CROP! announcement.
-        // This prevents normal chat/item-name mentions from triggering the RNG.
-        if (isHarvestFeastDrop(item) && !RngMessageMatcher.containsWholePhrase(rawMessage, "RARE CROP!")) {
+        // findDrop already requires the exact RARE CROP! announcement. Keep
+        // the explicit validation here too so future matcher changes cannot
+        // accidentally make Harvest Feast timers trigger from normal chat.
+        if (isHarvestFeastDrop(item) && !RngMessageMatcher.isRareCropAnnouncement(rawMessage, item)) {
             return;
         }
 
