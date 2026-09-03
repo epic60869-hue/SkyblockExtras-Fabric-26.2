@@ -31,7 +31,7 @@ public class PetOverlay {
     private static final Pattern XP_PATTERN = Pattern.compile("(?i)pet\\s*xp\\s*[:：]\\s*([0-9,.]+(?:[kmb])?)(?:\\s*/\\s*([0-9,.]+(?:[kmb])?))?");
     private static final Pattern ITEM_PATTERN = Pattern.compile("(?i)(?:held item|pet item)\\s*[:：]\\s*(.+)");
 
-    // NopoMod's pet XP curve, ported to Java for SBE.
+    // NopoMod pet XP curve used for the overflow calculation.
     private static final int[] PET_XP = {
         100,110,120,130,145,160,175,190,210,230,250,275,300,330,360,400,440,490,540,600,
         660,730,800,880,960,1050,1150,1260,1380,1510,1650,1800,1960,2130,2310,2500,2700,2920,3160,3420,
@@ -42,7 +42,9 @@ public class PetOverlay {
         936700,1016700,1101700,1191700,1286700,1386700,1496700,1616700,1746700,1886700
     };
 
-    public PetOverlay(SbeConfig config) { this.config = config; }
+    public PetOverlay(SbeConfig config) {
+        this.config = config;
+    }
 
     public void tick(Minecraft client) {
         if (!config.petOverlayEnabled || client == null || client.player == null) return;
@@ -55,16 +57,21 @@ public class PetOverlay {
         if (client.getConnection() == null) return;
         StringBuilder all = new StringBuilder();
         Collection<PlayerInfo> players = client.getConnection().getListedOnlinePlayers();
+
         for (PlayerInfo info : players) {
             Component display = info.getTabListDisplayName();
             if (display != null) all.append(display.getString()).append('\n');
         }
-        for (PlayerInfo info : players) all.append(info.getProfile().name()).append('\n');
+        for (PlayerInfo info : players) {
+            all.append(info.getProfile().name()).append('\n');
+        }
+
         parseTabText(all.toString());
     }
 
     private void parseTabText(String raw) {
         if (raw == null || raw.isBlank()) return;
+
         String[] lines = raw.split("\\R");
         boolean foundPet = false;
         long tabXp = -1L;
@@ -101,17 +108,17 @@ public class PetOverlay {
                             setPet(name, rarity, level);
                             foundPet = true;
                         }
-                    } catch (NumberFormatException ignored) { }
+                    } catch (NumberFormatException ignored) {
+                    }
                 }
             }
         }
 
         if (!foundPet) return;
+
         if (tabXp >= 0L) currentXp = tabXp;
         requiredXp = tabRequired >= 0L ? tabRequired : xpToLevelCap(petLevel, petRarity, petName);
 
-        // Nopo-style overflow calculation: use the complete XP total and the
-        // same cumulative pet curve to calculate an overflow/equivalent level.
         overflowLevel = calcOverflowLevel(currentXp, petRarity);
         long progressXp = calcLeftOverXp(currentXp, petRarity);
         if (progressXp >= 0L) {
@@ -121,13 +128,23 @@ public class PetOverlay {
         }
     }
 
-    private static String cleanItemName(String item) { return item.replaceAll("\\s+", " ").trim(); }
-    private static int indexOfIgnoreCase(String text, String needle) { return text.toLowerCase(Locale.ROOT).indexOf(needle.toLowerCase(Locale.ROOT)); }
-    private static String stripFormatting(String s) { return s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim(); }
+    private static String cleanItemName(String item) {
+        return item.replaceAll("\\s+", " ").trim();
+    }
+
+    private static int indexOfIgnoreCase(String text, String needle) {
+        return text.toLowerCase(Locale.ROOT).indexOf(needle.toLowerCase(Locale.ROOT));
+    }
+
+    private static String stripFormatting(String s) {
+        return s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim();
+    }
 
     private static String findRarity(String text) {
         String[] rarities = {"Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common"};
-        for (String rarity : rarities) if (text.toLowerCase(Locale.ROOT).contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
+        for (String rarity : rarities) {
+            if (text.toLowerCase(Locale.ROOT).contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
+        }
         return "";
     }
 
@@ -143,12 +160,9 @@ public class PetOverlay {
             if (v.endsWith("M")) return Math.round(Double.parseDouble(v.substring(0, v.length() - 1)) * 1_000_000D);
             if (v.endsWith("K")) return Math.round(Double.parseDouble(v.substring(0, v.length() - 1)) * 1_000D);
             return Math.round(Double.parseDouble(v));
-        } catch (NumberFormatException e) { return -1L; }
-    }
-
-    private static int maxPetLevel(String name) {
-        String n = name.toLowerCase(Locale.ROOT);
-        return n.contains("golden dragon") || n.contains("jade dragon") || n.contains("rose dragon") ? 200 : 100;
+        } catch (NumberFormatException e) {
+            return -1L;
+        }
     }
 
     private static long xpToLevelCap(int level, String rarity, String name) {
@@ -185,12 +199,6 @@ public class PetOverlay {
     private static int getXpForLevel(int level, String rarity) {
         int offset = getRarityOffset(rarity) + Math.max(0, level);
         return offset < PET_XP.length ? PET_XP[offset] : 1_886_700;
-    }
-
-    private static long getCalculativeXpForLevel(int level, String rarity) {
-        long xp = 0L;
-        for (int i = 0; i < Math.max(0, level); i++) xp += getXpForLevel(i, rarity);
-        return xp;
     }
 
     private static int calcOverflowLevel(long xp, String rarity) {
@@ -243,110 +251,85 @@ public class PetOverlay {
         return new ItemStack(Items.PLAYER_HEAD);
     }
 
-    /** Maps Pet Items to stable base Minecraft icons. */
-    private ItemStack petItemIcon() {
-        String n = petItem.toLowerCase(Locale.ROOT).replaceAll("§.", "").trim();
-        if (n.isBlank()) return ItemStack.EMPTY;
-        if (n.contains("all skills exp boost") || n.contains("combat exp boost") || n.contains("farming exp boost") || n.contains("fishing exp boost") || n.contains("foraging exp boost") || n.contains("mining exp boost")) return new ItemStack(Items.ENCHANTED_BOOK);
-        if (n.contains("antique remedies")) return new ItemStack(Items.GOLD_INGOT);
-        if (n.contains("bejeweled collar")) return new ItemStack(Items.DIAMOND);
-        if (n.contains("big teeth") || n.contains("bigger teeth") || n.contains("gold claws")) return new ItemStack(Items.GOLD_INGOT);
-        if (n.contains("bingo booster")) return new ItemStack(Items.FIREWORK_ROCKET);
-        if (n.contains("brown bandana")) return new ItemStack(Items.DIRT);
-        if (n.contains("bubblegum")) return new ItemStack(Items.SLIME_BALL);
-        if (n.contains("burnt texts")) return new ItemStack(Items.BOOK);
-        if (n.contains("cretan urn")) return new ItemStack(Items.FLOWER_POT);
-        if (n.contains("crochet tiger plushie")) return new ItemStack(Items.PAPER);
-        if (n.contains("dead cat food")) return new ItemStack(Items.COD);
-        if (n.contains("dwarf turtle shelmet") || n.contains("hephaestus shelmet")) return new ItemStack(Items.IRON_HELMET);
-        if (n.contains("edible seaweed")) return new ItemStack(Items.DRIED_KELP);
-        if (n.contains("eerie toy") || n.contains("eerie treat")) return new ItemStack(Items.PUMPKIN);
-        if (n.contains("exp share")) return new ItemStack(Items.EXPERIENCE_BOTTLE);
-        if (n.contains("flying pig")) return new ItemStack(Items.CARROT_ON_A_STICK);
-        if (n.contains("four-eyed fish")) return new ItemStack(Items.PUFFERFISH);
-        if (n.contains("frog treat")) return new ItemStack(Items.FROGSPAWN);
-        if (n.contains("grandma's knitting needle")) return new ItemStack(Items.STRING);
-        if (n.contains("green bandana")) return new ItemStack(Items.SLIME_BALL);
-        if (n.contains("hardened scales") || n.contains("reinforced scales")) return new ItemStack(Items.IRON_INGOT);
-        if (n.contains("hephaestus plushie")) return new ItemStack(Items.PAPER);
-        if (n.contains("hephaestus relic") || n.contains("hephaestus remedies")) return new ItemStack(Items.NETHERITE_INGOT);
-        if (n.contains("hephaestus souvenir")) return new ItemStack(Items.GOLD_NUGGET);
-        if (n.contains("hephaestus urn")) return new ItemStack(Items.FLOWER_POT);
-        if (n.contains("iron claws")) return new ItemStack(Items.IRON_INGOT);
-        if (n.contains("lucky clover")) return new ItemStack(Items.OAK_LEAVES);
-        if (n.contains("minos relic")) return new ItemStack(Items.GOLDEN_APPLE);
-        if (n.contains("quick claw")) return new ItemStack(Items.IRON_NUGGET);
-        if (n.contains("reaper gem")) return new ItemStack(Items.AMETHYST_SHARD);
-        if (n.contains("saddle")) return new ItemStack(Items.SADDLE);
-        if (n.contains("serrated claws") || n.contains("sharpened claws")) return new ItemStack(Items.IRON_INGOT);
-        if (n.contains("spooky cupcake")) return new ItemStack(Items.CAKE);
-        if (n.contains("textbook")) return new ItemStack(Items.BOOK);
-        if (n.contains("tier boost")) return new ItemStack(Items.NETHER_STAR);
-        if (n.contains("titanium minecart")) return new ItemStack(Items.MINECART);
-        if (n.contains("uncommon party hat")) return new ItemStack(Items.PAPER);
-        if (n.contains("washed-up souvenir")) return new ItemStack(Items.HEART_OF_THE_SEA);
-        if (n.contains("yellow bandana")) return new ItemStack(Items.HONEYCOMB);
-        return new ItemStack(Items.ENCHANTED_BOOK);
-    }
-
     public void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
         if (!config.petOverlayEnabled || Minecraft.getInstance().player == null) return;
+
         Minecraft client = Minecraft.getInstance();
         float scale = config.petScale <= 0 ? 1.0f : config.petScale;
-        int width = getOverlayWidth();
-        int height = getOverlayHeight();
         var pose = graphics.pose();
         pose.pushMatrix();
         pose.translate(config.petX, config.petY);
         pose.scale(scale, scale);
 
-        if (config.petBackgroundEnabled) {
-            graphics.fill(-6, -6, width + 6, height + 6, 0xD9101117);
-            graphics.outline(-6, -6, width + 6, height + 6, 0xFF41434E);
-            graphics.fill(-5, -5, -2, height + 5, rarityColor());
-        }
-
         int textX = 0;
-        if (config.showPetIcon) { graphics.item(petIcon(), 0, 0); textX = 20; }
-
-        StringBuilder name = new StringBuilder();
-        if (config.showPetLevel) {
-            name.append("[Lvl ").append(petLevel);
-            if (overflowLevel > petLevel) name.append(" → ").append(overflowLevel);
-            name.append("] ");
+        if (config.showPetIcon) {
+            graphics.item(petIcon(), 0, 0);
+            textX = 20;
         }
-        name.append(petName);
-        if (!petRarity.isBlank()) name.append(" ").append(petRarity);
-        graphics.text(client.font, Component.literal(name.toString()), textX, 1, 0xFFFFFFFF, true);
 
-        int y = 14;
+        int y = 0;
+
+        // Compact Skysoft-style layout: icon + name, then percentage, XP and item.
+        if (config.showPetLevel || !petName.isBlank()) {
+            StringBuilder name = new StringBuilder();
+            if (config.showPetLevel) name.append("[Lvl ").append(petLevel).append("] ");
+            name.append(petName);
+
+            int nameColor = petRarity.isBlank() ? 0xFFFFFFFF : rarityColor();
+            graphics.text(client.font, Component.literal(name.toString()), textX, y, nameColor, true);
+            y += 12;
+        }
+
         if (config.showPetProgress) {
-            int barWidth = 145;
-            long levelXp = getCalculativeXpForLevel(Math.max(0, overflowLevel - 1), petRarity);
-            int xpForNextLevel = getXpForLevel(Math.max(0, overflowLevel - 1), petRarity);
-            float progress = xpForNextLevel <= 0 ? 0.0f : Math.min(1.0f, Math.max(0.0f, (currentXp - levelXp) / (float) xpForNextLevel));
-            graphics.fill(textX, y, textX + barWidth, y + 5, 0xFF30323A);
-            int fill = Math.round(barWidth * progress);
-            if (fill > 0) graphics.fill(textX, y, textX + fill, y + 5, rarityColor());
-            y += 8;
-        }
-
-        if (config.showPetXp) {
-            graphics.text(client.font, Component.literal("XP " + formatNumber(currentXp) + " / " + formatNumber(requiredXp)), textX, y, 0xFFDADAE0, false);
+            graphics.text(client.font, Component.literal("Level Progress: " + formatPercent(levelProgress())), textX, y, 0xFF55FFFF, false);
             y += 10;
         }
 
-        if (config.showOverflowXp && (overflowLevel > petLevel || overflowXp > 0)) {
-            graphics.text(client.font, Component.literal("Overflow Lv " + overflowLevel + "  •  " + formatNumber(overflowXp) + " XP"), textX, y, 0xFFFFC857, false);
+        if (config.showPetXp) {
+            graphics.text(client.font, Component.literal("Pet XP: " + formatNumber(currentXp)), textX, y, 0xFF55FFFF, false);
+            y += 10;
+        }
+
+        if (config.showOverflowXp && overflowLevel > petLevel) {
+            graphics.text(client.font, Component.literal("Overflow: Lv " + overflowLevel + "  " + formatNumber(overflowXp) + " XP"), textX, y, 0xFFFFC857, false);
             y += 10;
         }
 
         if (config.showPetItem && !petItem.isBlank()) {
-            ItemStack itemIcon = petItemIcon();
-            if (!itemIcon.isEmpty()) graphics.item(itemIcon, textX, y - 2);
-            graphics.text(client.font, Component.literal(petItem), textX + 20, y, 0xFFAAAAB3, false);
+            graphics.text(client.font, Component.literal("Pet Item: " + petItem), textX, y, 0xFFAA55FF, false);
+            y += 10;
         }
+
+        // Keep the background optional, but only around the compact content.
+        // No XP bar or long horizontal line is drawn anymore.
+        if (config.petBackgroundEnabled) {
+            int contentWidth = getOverlayWidth();
+            int contentHeight = Math.max(12, y);
+            // Background is rendered behind the content by the extractor's layering
+            // order in the HUD pass; use a subtle compact card matching the old toggle.
+            graphics.fill(textX - 4, -3, contentWidth, contentHeight + 3, 0xB9101117);
+            graphics.outline(textX - 4, -3, contentWidth, contentHeight + 3, 0xFF41434E);
+            graphics.fill(textX - 4, -3, textX - 1, contentHeight + 3, rarityColor());
+        }
+
         pose.popMatrix();
+    }
+
+    private float levelProgress() {
+        if (petLevel <= 0) return 0.0f;
+
+        long startXp = getCalculativeXpForLevel(Math.max(0, petLevel - 1), petRarity);
+        long needed = getXpForLevel(Math.max(0, petLevel - 1), petRarity);
+
+        if (needed <= 0L) return 0.0f;
+        if (currentXp >= startXp + needed) return 100.0f;
+        return Math.max(0.0f, Math.min(100.0f, (currentXp - startXp) * 100.0f / needed));
+    }
+
+    private static long getCalculativeXpForLevel(int level, String rarity) {
+        long xp = 0L;
+        for (int i = 0; i < Math.max(0, level); i++) xp += getXpForLevel(i, rarity);
+        return xp;
     }
 
     private int rarityColor() {
@@ -361,22 +344,19 @@ public class PetOverlay {
         };
     }
 
-    private int getOverlayWidth() { return config.showPetIcon ? 220 : 195; }
+    private int getOverlayWidth() {
+        int base = config.showPetIcon ? 20 : 0;
+        base += 150;
+        if (petItem.length() > 20) base += Math.min(80, (petItem.length() - 20) * 3);
+        return base;
+    }
 
-    private int getOverlayHeight() {
-        int h = 19;
-        if (config.showPetProgress) h += 8;
-        if (config.showPetXp) h += 10;
-        if (config.showOverflowXp && (overflowLevel > petLevel || overflowXp > 0)) h += 10;
-        if (config.showPetItem && !petItem.isBlank()) h += 14;
-        return h;
+    private String formatPercent(float percent) {
+        return String.format(Locale.ROOT, "%.1f%%", percent);
     }
 
     private String formatNumber(long number) {
-        if (number >= 1_000_000_000L) return String.format("%.2fB", number / 1_000_000_000.0);
-        if (number >= 1_000_000L) return String.format("%.2fM", number / 1_000_000.0);
-        if (number >= 1_000L) return String.format("%.2fK", number / 1_000.0);
-        return Long.toString(number);
+        return String.format(Locale.ROOT, "%,d", Math.max(0L, number));
     }
 
     public void setPet(String name, String rarity, int level) {
@@ -392,7 +372,9 @@ public class PetOverlay {
         overflowLevel = calcOverflowLevel(currentXp, petRarity);
     }
 
-    public void setPetItem(String item) { petItem = item == null ? "" : item; }
+    public void setPetItem(String item) {
+        petItem = item == null ? "" : item;
+    }
 
     public void clearPet() {
         petName = "No Pet";
