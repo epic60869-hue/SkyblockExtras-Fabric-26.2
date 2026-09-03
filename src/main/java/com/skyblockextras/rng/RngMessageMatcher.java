@@ -16,13 +16,18 @@ public final class RngMessageMatcher {
         String normalized = stripMinecraftFormatting(message).trim();
         if (normalized.isBlank()) return null;
 
-        // Do not require a literal "RARE DROP" prefix. Farming RNG announcements
-        // can be formatted differently by Hypixel and by different game events.
-        // The configured exact item list is the authoritative filter.
+        // Farming drops must be announced with the Hypixel RARE CROP! prefix.
+        // This prevents normal chat or pasted item names from triggering RNG timers.
         for (String item : trackableDrops) {
-            if (containsWholePhrase(normalized, item)) return item;
+            if (isRareCropAnnouncement(normalized, item)) return item;
         }
         return null;
+    }
+
+    public static boolean isRareCropAnnouncement(String text, String item) {
+        if (text == null || item == null || item.isBlank()) return false;
+        String regex = "(?i)^\\s*RARE\\s+CROP!\\s*" + Pattern.quote(item.trim()) + "\\s*[.!]?\\s*$";
+        return Pattern.compile(regex).matcher(text).find();
     }
 
     public static boolean containsWholePhrase(String text, String phrase) {
