@@ -27,20 +27,24 @@ public class SbeConfig {
     public int petX = 10;
     public int petY = 10;
 
-    // RNG drop announcement overlay settings.
     public boolean rngDropOverlayEnabled = true;
     public boolean rngDropOverlayBackgroundEnabled = true;
     public float rngDropOverlayScale = 1.0f;
     public int rngDropOverlayX = -1;
     public int rngDropOverlayY = -1;
-    // SHORT = 1.25M, FULL = 1,250,000, COINS = 1.25M coins.
     public String rngDropPriceFormat = "SHORT";
 
+    // Kept for backwards compatibility with older configs. Feast drops are now
+    // controlled by the single harvestFeastEnabled toggle.
     public Map<String, Boolean> harvestFeastDrops = new LinkedHashMap<>();
     public Map<String, Boolean> farmingDyes = new LinkedHashMap<>();
     public boolean epicSlug = true;
     public boolean legendarySlug = true;
     public Map<String, Long> lastDrops = new LinkedHashMap<>();
+
+    // Discord webhook session tracking.
+    public boolean discordWebhookEnabled = false;
+    public String discordWebhookUrl = "";
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("skyblockextras.json");
@@ -54,6 +58,7 @@ public class SbeConfig {
                     if (config.farmingDyes == null) config.farmingDyes = new LinkedHashMap<>();
                     if (config.lastDrops == null) config.lastDrops = new LinkedHashMap<>();
                     if (config.rngDropPriceFormat == null) config.rngDropPriceFormat = "SHORT";
+                    if (config.discordWebhookUrl == null) config.discordWebhookUrl = "";
                     return config;
                 }
             }
