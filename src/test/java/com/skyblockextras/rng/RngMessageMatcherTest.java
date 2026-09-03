@@ -35,7 +35,7 @@ class RngMessageMatcherTest {
         assertEquals(
                 "Squash",
                 RngMessageMatcher.findDrop(
-                        "RARE DROP! You found a Squash!",
+                        "RARE CROP! Squash",
                         FEAST_DROPS
                 )
         );
@@ -46,7 +46,7 @@ class RngMessageMatcherTest {
         assertEquals(
                 "Designer Coffee Beans",
                 RngMessageMatcher.findDrop(
-                        "§6PRAY RNGESUS! §fDesigner Coffee Beans",
+                        "§6RARE CROP! §aDesigner Coffee Beans",
                         FEAST_DROPS
                 )
         );
@@ -63,15 +63,25 @@ class RngMessageMatcherTest {
     }
 
     @Test
+    void ignoresOldRareDropFormat() {
+        assertNull(
+                RngMessageMatcher.findDrop(
+                        "RARE DROP! Squash",
+                        FEAST_DROPS
+                )
+        );
+    }
+
+    @Test
     void doesNotMatchPartialWords() {
-        assertTrue(!RngMessageMatcher.containsWholePhrase("RARE DROP! NotCropie", "Cropie"));
+        assertTrue(!RngMessageMatcher.containsWholePhrase("RARE CROP! NotCropie", "Cropie"));
     }
 
     @Test
     void stripsMinecraftFormatting() {
         assertEquals(
-                "RARE DROP! Squash",
-                RngMessageMatcher.stripMinecraftFormatting("§6RARE DROP! §aSquash")
+                "RARE CROP! Squash",
+                RngMessageMatcher.stripMinecraftFormatting("§6RARE CROP! §aSquash")
         );
     }
 }
