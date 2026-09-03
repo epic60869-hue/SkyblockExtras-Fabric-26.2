@@ -16,13 +16,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class RngTracker {
-    private static final long DUPLICATE_WINDOW_MS = 1500L;
     private static final Gson GSON = new Gson();
 
     private final SbeConfig config;
     private final Map<String, Long> lastDrops = new LinkedHashMap<>();
     private final Map<String, String> exactDrops = new LinkedHashMap<>();
-    private final Map<String, Long> recentlyHandled = new LinkedHashMap<>();
 
     public RngTracker(SbeConfig config) {
         this.config = config;
@@ -88,13 +86,7 @@ public class RngTracker {
         String item = RngMessageMatcher.findDrop(rawMessage, exactDrops.keySet());
         if (item == null || !isEnabled(item)) return;
 
-        // findDrop already requires the exact RARE CROP! announcement. Keep
-        // the explicit validation here too so future matcher changes cannot
-        // accidentally make Harvest Feast timers trigger from normal chat.
-        if (isHarvestFeastDrop(item) && !RngMessageMatcher.isRareCropAnnouncement(rawMessage, item)) {
-            return;
-        }
-
+        if (isHarvestFeastDrop(item) && !RngMessageMatcher.isRareCropAnnouncement(rawMessage, item)) return;
         recordDrop(item);
     }
 
@@ -115,11 +107,6 @@ public class RngTracker {
 
     private void recordDrop(String item) {
         long now = System.currentTimeMillis();
-        Long recent = recentlyHandled.get(item);
-        if (recent != null && now - recent < DUPLICATE_WINDOW_MS) return;
-        recentlyHandled.put(item, now);
-        recentlyHandled.entrySet().removeIf(entry -> now - entry.getValue() >= DUPLICATE_WINDOW_MS);
-
         Long previous = lastDrops.put(item, now);
         config.setLastDrop(item, now);
         config.save();
