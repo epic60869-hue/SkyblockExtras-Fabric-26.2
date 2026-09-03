@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -17,7 +18,7 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** SkyBlock pet HUD. Reads pet stats from TAB and resolves the real pet head from the spawned pet entity. */
+/** SkyBlock pet HUD. Reads pet stats from TAB and resolves the real pet head from nearby Hypixel entities. */
 public class PetOverlay {
     private final SbeConfig config;
     private String petName = "No Pet";
@@ -98,10 +99,45 @@ public class PetOverlay {
         if (progress >= 0) tabProgress = progress;
     }
 
-    /** Finds the actual Hypixel pet head without using a nearest-player-head fallback. */
+    /**
+     * Resolve the real Hypixel pet head. Hypixel commonly renders the pet as a
+     * named living entity plus a nearby ArmorStand/head entity. We first anchor
+     * on an entity whose name contains the active pet name, then look for a
+     * player-head immediately around that anchor. If Hypixel does not expose a
+     * named anchor, we use a looser scored fallback so the icon does not vanish.
+     */
     private void resolveRealPetIcon(Minecraft client) {
         if (client.level == null || client.player == null || petName.equals("No Pet")) return;
-        double maxDistance = 8.0D;
+
+        // Best path: find a living entity named after the active pet, then find
+        // its actual player-head within a small radius. This avoids selecting a
+        // random nearby Slug/NPC just because it is closer to the player.
+        LivingEntity namedAnchor = null;
+        double anchorDistance = Double.MAX_VALUE;
+        for (Entity entity : client.level.entitiesForRendering()) {
+            if (!(entity instanceof LivingEntity living) || entity == client.player || !living.isAlive()) continue;
+            double distance = living.distanceToSqr(client.player);
+            if (distance > 18.0D * 18.0D) continue;
+            Component custom = living.getCustomName();
+            if (custom == null) continue;
+            String name = stripFormatting(custom.getString()).toLowerCase(Locale.ROOT);
+            if (!name.contains(petName.toLowerCase(Locale.ROOT))) continue;
+            if (name.contains("slug") && !petName.equalsIgnoreCase("Slug")) continue;
+            if (distance < anchorDistance) { anchorDistance = distance; namedAnchor = living; }
+        }
+
+        if (namedAnchor != null) {
+            ItemStack anchored = findHeadNear(client, namedAnchor, 3.0D);
+            if (!anchored.isEmpty()) {
+                String key = petName + "|" + petLevel + "|anchor|" + anchored.hashCode();
+                if (!key.equals(resolvedIconKey)) { resolvedPetIcon = anchored; resolvedIconKey = key; }
+                return;
+            }
+        }
+
+        // Fallback: score every nearby player head. Do not reject by Y position;
+        // Hypixel's pet entity layout can vary between islands/areas.
+        double maxDistance = 12.0D;
         var box = client.player.getBoundingBox().inflate(maxDistance);
         Entity bestEntity = null;
         ItemStack bestStack = ItemStack.EMPTY;
@@ -112,14 +148,17 @@ public class PetOverlay {
             boolean armorStand = entity instanceof ArmorStand;
             if (armorStand) head = ((ArmorStand) entity).getItemBySlot(EquipmentSlot.HEAD);
             else if (entity instanceof Display.ItemDisplay) head = ((Display.ItemDisplay) entity).getItemStack();
-            if (head.isEmpty() || head.getItem() != Items.PLAYER_HEAD) continue;
+            if (!isUsablePetHead(head)) continue;
 
             double distanceSq = entity.distanceToSqr(client.player);
             if (distanceSq > maxDistance * maxDistance) continue;
-            double relativeY = entity.getY() - client.player.getY();
-            if (relativeY < -1.5D || relativeY > 3.5D) continue;
 
-            double score = armorStand ? 0.0D : 700.0D;
+            double score = 0.0D;
+            if (entity instanceof LivingEntity living && living.getCustomName() != null) {
+                String custom = stripFormatting(living.getCustomName().getString()).toLowerCase(Locale.ROOT);
+                if (custom.contains(petName.toLowerCase(Locale.ROOT))) score += 2500.0D;
+                if (custom.contains("slug") && !petName.equalsIgnoreCase("Slug")) score -= 5000.0D;
+            }
             if (armorStand) {
                 ArmorStand stand = (ArmorStand) entity;
                 String customName = stand.getCustomName() == null ? "" : stripFormatting(stand.getCustomName().getString());
@@ -128,7 +167,7 @@ public class PetOverlay {
                     int entityLevel = parseInt(levelMatcher.group(1));
                     if (entityLevel == petLevel) score += 1500.0D;
                     else score -= 1000.0D;
-                } else score -= 100.0D;
+                }
                 if (stand.isInvisible()) score += 500.0D;
                 if (stand.isMarker()) score += 350.0D;
                 if (stand.isSmall()) score += 150.0D;
@@ -136,7 +175,7 @@ public class PetOverlay {
                 for (EquipmentSlot slot : EquipmentSlot.VALUES) if (!stand.getItemBySlot(slot).isEmpty()) equipmentCount++;
                 if (equipmentCount == 1) score += 300.0D;
             }
-            score -= distanceSq * 3.0D;
+            score -= distanceSq * 2.0D;
             if (score > bestScore) { bestScore = score; bestEntity = entity; bestStack = head.copy(); }
         }
 
@@ -144,6 +183,36 @@ public class PetOverlay {
             String key = petName + "|" + petLevel + "|" + bestEntity.getId();
             if (!key.equals(resolvedIconKey)) { resolvedPetIcon = bestStack; resolvedIconKey = key; }
         }
+    }
+
+    private ItemStack findHeadNear(Minecraft client, LivingEntity anchor, double radius) {
+        double radiusSq = radius * radius;
+        ItemStack best = ItemStack.EMPTY;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        var box = anchor.getBoundingBox().inflate(radius);
+        for (Entity entity : client.level.getEntities((Entity) null, box, Entity::isAlive)) {
+            ItemStack head = ItemStack.EMPTY;
+            if (entity instanceof ArmorStand stand) head = stand.getItemBySlot(EquipmentSlot.HEAD);
+            else if (entity instanceof Display.ItemDisplay display) head = display.getItemStack();
+            if (!isUsablePetHead(head)) continue;
+            double distanceSq = entity.distanceToSqr(anchor);
+            if (distanceSq > radiusSq) continue;
+            double score = -distanceSq * 10.0D;
+            if (entity instanceof ArmorStand stand) {
+                if (stand.isInvisible()) score += 300.0D;
+                if (stand.isMarker()) score += 250.0D;
+                if (stand.isSmall()) score += 100.0D;
+                int equipmentCount = 0;
+                for (EquipmentSlot slot : EquipmentSlot.VALUES) if (!stand.getItemBySlot(slot).isEmpty()) equipmentCount++;
+                if (equipmentCount == 1) score += 200.0D;
+            } else score += 500.0D;
+            if (score > bestScore) { bestScore = score; best = head.copy(); }
+        }
+        return best;
+    }
+
+    private static boolean isUsablePetHead(ItemStack stack) {
+        return !stack.isEmpty() && stack.getItem() == Items.PLAYER_HEAD;
     }
 
     private long calculateTotalXp(int level, long localXp, String rarity) {
