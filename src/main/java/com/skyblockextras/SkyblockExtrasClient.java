@@ -1,5 +1,6 @@
 package com.skyblockextras;
 
+import com.mojang.authlib.GameProfile;
 import com.skyblockextras.config.SbeConfig;
 import com.skyblockextras.pet.PetOverlay;
 import com.skyblockextras.rng.RngDropOverlay;
@@ -50,6 +51,8 @@ public class SkyblockExtrasClient implements ClientModInitializer {
             );
         });
 
+        // Hypixel RNG announcements are normally delivered as game/system messages.
+        // Keep GAME handling as the authoritative drop source.
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
             if (message == null || overlay) return;
             Minecraft minecraft = Minecraft.getInstance();
@@ -61,6 +64,12 @@ public class SkyblockExtrasClient implements ClientModInitializer {
             if (message == null) return;
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft.player == null) return;
+
+            // A copied RNG announcement pasted back into chat is now a normal
+            // player chat message. Never count the player's own pasted message
+            // as a new drop, or the per-item RNG timer would reset.
+            if (isOwnChatMessage(sender, minecraft)) return;
+
             if (RNG != null) RNG.handle(message);
         });
 
@@ -85,6 +94,15 @@ public class SkyblockExtrasClient implements ClientModInitializer {
         });
 
         System.out.println("[SBE] Skyblock Extras initialized.");
+    }
+
+    private static boolean isOwnChatMessage(GameProfile sender, Minecraft minecraft) {
+        if (sender == null || minecraft.player == null) return false;
+        try {
+            return sender.getId() != null && sender.getId().equals(minecraft.player.getUUID());
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static int openSettings(Minecraft minecraft) {
