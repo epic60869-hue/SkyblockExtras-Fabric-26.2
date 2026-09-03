@@ -62,7 +62,7 @@ public class RngDropOverlay {
 
         String title = "RNG DROP";
         String itemText = "x" + amount + " " + item;
-        String priceText = price.equals("--") ? "--" : price;
+        String priceText = price;
 
         int titleWidth = client.font.width(title);
         int itemWidth = client.font.width(itemText);
@@ -82,7 +82,6 @@ public class RngDropOverlay {
         pose.translate(x, y);
         pose.scale(totalScale, totalScale);
 
-        // SkyHanni-inspired dark panel with a bright gold accent.
         if (config.rngDropOverlayBackgroundEnabled) {
             graphics.fill(-8, -8, width + 8, height + 8, 0x66000000);
             graphics.outline(-6, -6, width + 6, height + 6, 0xFFAA5500);
@@ -92,20 +91,17 @@ public class RngDropOverlay {
             graphics.fill(1, height - 5, width - 1, height - 1, 0xFFAA5500);
         }
 
-        drawBoldCentered(graphics, client, title, width, 10, 0xFFFFAA00);
-        drawBoldCentered(graphics, client, itemText, width, 35, 0xFFFFFFFF);
-        drawBoldCentered(graphics, client, priceText, width, 61, 0xFF55FF55);
+        // Same Minecraft font renderer, scale and single bold pass as the Pet HUD.
+        // The old double-pass fake bold made the text look like two layers stacked together.
+        drawCentered(graphics, client, title, width, 10, 0xFFFFAA00);
+        drawCentered(graphics, client, itemText, width, 35, 0xFFFFFFFF);
+        drawCentered(graphics, client, priceText, width, 61, 0xFF55FF55);
         pose.popMatrix();
     }
 
-    private void drawBoldCentered(GuiGraphicsExtractor graphics, Minecraft client, String text, int width, int y, int color) {
-        int textWidth = client.font.width(text);
-        int x = (width - textWidth) / 2;
-        Component component = Component.literal(text);
-        // Vanilla has no standalone bold-font renderer here, so two tightly offset
-        // passes give the same heavy/high-visibility look without changing the font file.
-        graphics.text(client.font, component, x, y, color, true);
-        graphics.text(client.font, component, x + 1, y, color, true);
+    private void drawCentered(GuiGraphicsExtractor graphics, Minecraft client, String text, int width, int y, int color) {
+        int x = (width - client.font.width(text)) / 2;
+        graphics.text(client.font, Component.literal(text), x, y, color, true);
     }
 
     public boolean isVisible() { return config.rngDropOverlayEnabled && !item.isBlank() && System.currentTimeMillis() < expiresAt; }
