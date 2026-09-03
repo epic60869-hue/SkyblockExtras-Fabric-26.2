@@ -31,7 +31,6 @@ public class PetOverlay {
     private static final Pattern XP_PATTERN = Pattern.compile("(?i)pet\\s*xp\\s*[:：]\\s*([0-9,.]+(?:[kmb])?)(?:\\s*/\\s*([0-9,.]+(?:[kmb])?))?");
     private static final Pattern ITEM_PATTERN = Pattern.compile("(?i)(?:held item|pet item)\\s*[:：]\\s*(.+)");
 
-    // Hypixel pet names. This prevents normal tab-list entries such as player names from being mistaken for pets.
     private static final String[] KNOWN_PETS = {
         "Alligator", "Armadillo", "Bat", "Bee", "Black Cat", "Blaze", "Blue Whale", "Chicken",
         "Dolphin", "Ender Dragon", "Enderman", "Elephant", "Ethereal Blaze", "Flying Fish", "Giraffe",
@@ -39,11 +38,10 @@ public class PetOverlay {
         "Jellyfish", "Lion", "Magma Cube", "Megalodon", "Monkey", "Mooshroom Cow", "Ocelot", "Parrot",
         "Phoenix", "Pig", "Rabbit", "Rat", "Reindeer", "Rock", "Scatha", "Sheep", "Silverfish",
         "Skeleton", "Skeleton Horse", "Slug", "Snail", "Snowman", "Spirit", "Squid", "Tarantula",
-        "Tiger", "Turtle", "Vampire Witch Mask", "Witch", "Wither Skeleton", "Wolf", "Zombie", "Rift Ferret",
-        "Kuudra", "Ammonite", "Mithril Golem", "Bal", "Glacite Golem", "Baby Yeti", "T-Rex"
+        "Tiger", "Turtle", "Witch", "Wither Skeleton", "Wolf", "Zombie", "Rift Ferret", "Kuudra",
+        "Ammonite", "Mithril Golem", "Bal", "Glacite Golem", "Baby Yeti", "T-Rex"
     };
 
-    // NopoMod pet XP curve used for the overflow calculation.
     private static final int[] PET_XP = {
         100,110,120,130,145,160,175,190,210,230,250,275,300,330,360,400,440,490,540,600,
         660,730,800,880,960,1050,1150,1260,1380,1510,1650,1800,1960,2130,2310,2500,2700,2920,3160,3420,
@@ -70,6 +68,9 @@ public class PetOverlay {
         for (PlayerInfo info : players) {
             Component display = info.getTabListDisplayName();
             if (display != null) all.append(display.getString()).append('\n');
+            // Some Hypixel tab implementations put the pet text into the profile/display data.
+            String profileName = info.getProfile().getName();
+            if (profileName != null && !profileName.isBlank()) all.append(profileName).append('\n');
         }
         parseTabText(all.toString());
     }
@@ -98,24 +99,20 @@ public class PetOverlay {
             Matcher item = ITEM_PATTERN.matcher(line);
             if (item.find()) petItem = cleanItemName(item.group(1));
 
-            // Hypixel's tab list does not necessarily include a literal "Pet:" prefix.
-            // It commonly exposes the active pet as: [Lvl 200] Golden Dragon
             Matcher pet = PET_PATTERN.matcher(line);
             if (pet.find()) {
                 try {
                     int level = Integer.parseInt(pet.group(1));
                     String details = pet.group(2).trim();
                     String rarity = findRarity(details);
-                    String name = removeRarity(details, rarity);
-
-                    if (isKnownPet(name)) {
-                        setPet(name, rarity, level);
+                    String detectedName = findKnownPet(details);
+                    if (detectedName != null) {
+                        setPet(detectedName, rarity, level);
                         foundPet = true;
                     }
                 } catch (NumberFormatException ignored) { }
             }
 
-            // Keep support for servers/modpacks that explicitly label the pet.
             int petIndex = indexOfIgnoreCase(line, "pet:");
             if (petIndex >= 0) {
                 String petText = line.substring(petIndex + 4).trim();
@@ -125,9 +122,9 @@ public class PetOverlay {
                         int level = Integer.parseInt(explicitPetMatcher.group(1));
                         String details = explicitPetMatcher.group(2).trim();
                         String rarity = findRarity(details);
-                        String name = removeRarity(details, rarity);
-                        if (isKnownPet(name)) {
-                            setPet(name, rarity, level);
+                        String detectedName = findKnownPet(details);
+                        if (detectedName != null) {
+                            setPet(detectedName, rarity, level);
                             foundPet = true;
                         }
                     } catch (NumberFormatException ignored) { }
@@ -138,33 +135,32 @@ public class PetOverlay {
         if (!foundPet) return;
         if (tabXp >= 0L) currentXp = tabXp;
         requiredXp = tabRequired >= 0L ? tabRequired : xpToLevelCap(petLevel, petRarity, petName);
-
         overflowLevel = calcOverflowLevel(currentXp, petRarity);
         long progressXp = calcLeftOverXp(currentXp, petRarity);
         overflowXp = progressXp >= 0L ? Math.max(0L, progressXp) : Math.max(0L, currentXp - requiredXp);
     }
 
-    private static boolean isKnownPet(String name) {
-        String cleaned = name.replaceAll("§.", "").trim();
+    private static String findKnownPet(String text) {
+        String cleaned = stripFormatting(text).replaceAll("\\s+", " ").trim();
         for (String pet : KNOWN_PETS) {
-            if (cleaned.equalsIgnoreCase(pet)) return true;
+            if (cleaned.equalsIgnoreCase(pet)) return pet;
+            String lower = cleaned.toLowerCase(Locale.ROOT);
+            String target = pet.toLowerCase(Locale.ROOT);
+            if (lower.startsWith(target + " ") || lower.endsWith(" " + target) || lower.contains(" " + target + " ")) return pet;
         }
-        return false;
+        return null;
     }
 
     private static String cleanItemName(String item) { return item.replaceAll("\\s+", " ").trim(); }
     private static int indexOfIgnoreCase(String text, String needle) { return text.toLowerCase(Locale.ROOT).indexOf(needle.toLowerCase(Locale.ROOT)); }
-    private static String stripFormatting(String s) { return s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim(); }
+    private static String stripFormatting(String s) {
+        return s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim();
+    }
 
     private static String findRarity(String text) {
         String[] rarities = {"Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common"};
         for (String rarity : rarities) if (text.toLowerCase(Locale.ROOT).contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
         return "";
-    }
-
-    private static String removeRarity(String text, String rarity) {
-        if (rarity.isBlank()) return text.trim();
-        return text.replaceFirst("(?i)\\b" + Pattern.quote(rarity) + "\\b", "").trim();
     }
 
     private static long parseNumber(String value) {
@@ -216,10 +212,7 @@ public class PetOverlay {
     private static int calcOverflowLevel(long xp, String rarity) {
         long exp = Math.max(0L, xp);
         int level = 0;
-        while (exp > 0L && level < 1000) {
-            exp -= getXpForLevel(level, rarity);
-            level++;
-        }
+        while (exp > 0L && level < 1000) { exp -= getXpForLevel(level, rarity); level++; }
         return Math.max(1, level);
     }
 
@@ -228,8 +221,7 @@ public class PetOverlay {
         int level = 0;
         while (exp > 0L && level < 1000) {
             long needed = getXpForLevel(level, rarity);
-            if (exp > needed) exp -= needed;
-            else return exp;
+            if (exp > needed) exp -= needed; else return exp;
             level++;
         }
         return -1L;
@@ -237,7 +229,7 @@ public class PetOverlay {
 
     private ItemStack petIcon() {
         String n = petName.toLowerCase(Locale.ROOT);
-        if (n.contains("golden dragon") || n.contains("ender dragon")) return new ItemStack(Items.DRAGON_EGG);
+        if (n.contains("dragon")) return new ItemStack(Items.DRAGON_EGG);
         if (n.contains("rabbit")) return new ItemStack(Items.RABBIT);
         if (n.contains("turtle")) return new ItemStack(Items.TURTLE_EGG);
         if (n.contains("bee")) return new ItemStack(Items.HONEYCOMB);
@@ -262,7 +254,6 @@ public class PetOverlay {
 
     public void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
         if (!config.petOverlayEnabled || Minecraft.getInstance().player == null) return;
-
         Minecraft client = Minecraft.getInstance();
         float scale = config.petScale <= 0 ? 1.0f : config.petScale;
         var pose = graphics.pose();
@@ -285,33 +276,16 @@ public class PetOverlay {
         }
 
         if (config.showPetIcon) graphics.item(petIcon(), 0, 0);
-
         int y = 0;
         String levelText = config.showPetLevel ? "[Lvl " + petLevel + "] " : "";
         if (!levelText.isEmpty()) graphics.text(client.font, Component.literal(levelText), textX, y, 0xFFFFFFFF, true);
         int petNameX = textX + (levelText.isEmpty() ? 0 : client.font.width(levelText));
         graphics.text(client.font, Component.literal(petName), petNameX, y, rarityColor(), true);
         y += 12;
-
-        if (config.showPetProgress) {
-            graphics.text(client.font, Component.literal("Level Progress: " + formatPercent(levelProgress())), textX, y, 0xFF55FFFF, false);
-            y += 10;
-        }
-
-        if (config.showPetXp) {
-            graphics.text(client.font, Component.literal("Pet XP: " + formatNumber(currentXp)), textX, y, 0xFF55FFFF, false);
-            y += 10;
-        }
-
-        if (config.showOverflowXp && overflowLevel > petLevel) {
-            graphics.text(client.font, Component.literal("Overflow: Lv " + overflowLevel + "  " + formatNumber(overflowXp) + " XP"), textX, y, 0xFFFFC857, false);
-            y += 10;
-        }
-
-        if (config.showPetItem && !petItem.isBlank()) {
-            graphics.text(client.font, Component.literal("Pet Item: " + petItem), textX, y, 0xFFAA55FF, false);
-        }
-
+        if (config.showPetProgress) { graphics.text(client.font, Component.literal("Level Progress: " + formatPercent(levelProgress())), textX, y, 0xFF55FFFF, false); y += 10; }
+        if (config.showPetXp) { graphics.text(client.font, Component.literal("Pet XP: " + formatNumber(currentXp)), textX, y, 0xFF55FFFF, false); y += 10; }
+        if (config.showOverflowXp && overflowLevel > petLevel) { graphics.text(client.font, Component.literal("Overflow: Lv " + overflowLevel + "  " + formatNumber(overflowXp) + " XP"), textX, y, 0xFFFFC857, false); y += 10; }
+        if (config.showPetItem && !petItem.isBlank()) graphics.text(client.font, Component.literal("Pet Item: " + petItem), textX, y, 0xFFAA55FF, false);
         pose.popMatrix();
     }
 
@@ -351,33 +325,10 @@ public class PetOverlay {
 
     private String formatPercent(float percent) { return String.format(Locale.ROOT, "%.1f%%", percent); }
     private String formatNumber(long number) { return String.format(Locale.ROOT, "%,d", Math.max(0L, number)); }
-
-    public void setPet(String name, String rarity, int level) {
-        if (name != null && !name.isBlank()) petName = name;
-        if (rarity != null) petRarity = rarity;
-        petLevel = Math.max(1, level);
-    }
-
-    public void setXp(long current, long required, long overflow) {
-        currentXp = Math.max(0, current);
-        requiredXp = Math.max(0, required);
-        overflowXp = Math.max(0, overflow);
-        overflowLevel = calcOverflowLevel(currentXp, petRarity);
-    }
-
+    public void setPet(String name, String rarity, int level) { if (name != null && !name.isBlank()) petName = name; if (rarity != null) petRarity = rarity; petLevel = Math.max(1, level); }
+    public void setXp(long current, long required, long overflow) { currentXp = Math.max(0, current); requiredXp = Math.max(0, required); overflowXp = Math.max(0, overflow); overflowLevel = calcOverflowLevel(currentXp, petRarity); }
     public void setPetItem(String item) { petItem = item == null ? "" : item; }
-
-    public void clearPet() {
-        petName = "No Pet";
-        petRarity = "";
-        petLevel = 1;
-        currentXp = 0L;
-        requiredXp = 25_353_230L;
-        overflowXp = 0L;
-        overflowLevel = 1;
-        petItem = "";
-    }
-
+    public void clearPet() { petName = "No Pet"; petRarity = ""; petLevel = 1; currentXp = 0L; requiredXp = 25_353_230L; overflowXp = 0L; overflowLevel = 1; petItem = ""; }
     public String getPetName() { return petName; }
     public String getPetRarity() { return petRarity; }
     public int getPetLevel() { return petLevel; }
