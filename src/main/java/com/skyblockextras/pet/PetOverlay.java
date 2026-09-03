@@ -53,8 +53,7 @@ public class PetOverlay {
     private static final Pattern ENTITY_LEVEL_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?");
     private static final Pattern HELD_ITEM_LORE = Pattern.compile("(?i)^held item\\s*:\\s*(.+)$");
 
-    /* Exact SkyBlock Rose Dragon head texture used by the pet display. */
-    private static final String ROSE_DRAGON_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTc2MTE3MzAyMjM0NywKICAicHJvZmlsZUlkIiA6ICJjOWI3OWY2OGEyZGY0YjA1ODUwOWRlMzg5YjM5ZDUyYyIsCiAgInByb2ZpbGVOYW1lIiA6ICJ3cmVlcGVyX2Jvb3AiLAogICJzaWduYXR1cmVSZXF1aXJlZCIgOiB0cnVlLAogICJ0ZXh0dXJlcyIgOiB7CiAgICAiU0tJTiIgOiB7CiAgICAgICJ1cmwiIDogImh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOWI3YzNkZTA3NWEyYmIyMzhlZjUxNDMxMjA2YjEwZDU4NmNiMmE1YjFjYzQxZmU4NTFjYzVmMGIwMmQzNTdjNyIsCiAgICAgICJtZXRhZGF0YSIgOiB7CiAgICAgICAgIm1vZGVsIiA6ICJzbGltIgogICAgICB9CiAgICB9CiAgfQp9";
+    private static final String ROSE_DRAGON_TEXTURE = "ewogICJ0aW1lc3RhbXAiIDogMTc2MTE3MzAyMjM0NywKICAicHJvZmlsZUlkIiA6ICJjOWI3OWY2OGEyZGY0YjA1ODUwOWRlMzg5YjM5ZDUyYyIsCiAgInByb2ZpbGVOYW1lIiA6ICJ3cmVlcGVyX2Jvb3AiLAogICJzaWduYXR1cmVSZXF1aXJlZCIgOiB0cnVlLAogICJ0ZXh0dXJlcyIgOiB7CiAgICAiU0tJTiIgOiB7CiAgICAgICJ1cmwiIDogImh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOWI3YzNkZTA3NWEyYmIyMzhlZjUxNDMxMjA2YjEwZDU4NmNiMmE1YjFjYzQxZmU4NTFjYzVmMGIwMmQzNTdjNyIsCiAgICAgICAgIm1ldGFkYXRhIiA6IHsibW9kZWwiIDogInNsaW0ifQogICAgfQogIH0KfQ==";
 
     private static final String[] KNOWN_PETS = {
         "Alligator", "Ammonite", "Ankylosaurus", "Armadillo", "Baby Yeti", "Bal", "Bat", "Bee", "Black Cat",
@@ -83,9 +82,13 @@ public class PetOverlay {
         if (!config.petOverlayEnabled || client == null || client.player == null) return;
         String oldPetKey = petName + "|" + petLevel + "|" + petRarity;
         readHypixelTab(client);
+        String tabPetKey = petName + "|" + petLevel + "|" + petRarity;
+        if (!tabPetKey.equals(oldPetKey)) { resolvedPetIcon = ItemStack.EMPTY; resolvedIconKey = ""; }
         readOpenedPetsMenu(client);
-        String newPetKey = petName + "|" + petLevel + "|" + petRarity;
-        if (!newPetKey.equals(oldPetKey)) { resolvedPetIcon = ItemStack.EMPTY; resolvedIconKey = ""; }
+        if (!resolvedIconKey.startsWith("menu-profile:")) {
+            String menuPetKey = petName + "|" + petLevel + "|" + petRarity;
+            if (!menuPetKey.equals(tabPetKey)) { resolvedPetIcon = ItemStack.EMPTY; resolvedIconKey = ""; }
+        }
         resolveRealPetIcon(client);
     }
 
@@ -137,9 +140,9 @@ public class PetOverlay {
         if (progress >= 0) tabProgress = progress;
     }
 
-    /** The opened Pets menu is the authoritative local source for rarity, total XP and held item. */
+    /** Reads the active pet from the Pets menu. This updates the held item whenever the menu is opened. */
     private void readOpenedPetsMenu(Minecraft client) {
-        if (!(client.screen instanceof AbstractContainerScreen<?> screen)) return;
+        if (!(client.gui.screen() instanceof AbstractContainerScreen<?> screen)) return;
         String title = stripFormatting(screen.getTitle().getString());
         if (!title.matches("(?:\\(\\d+/\\d+\\) )?Pets(?:.*)?")) return;
 
@@ -157,7 +160,6 @@ public class PetOverlay {
             if (held.isBlank()) held = info.heldItem;
             if (held != null && !held.isBlank()) petItem = stripFormatting(held).trim();
 
-            // If Hypixel exposes the pet profile on the menu item, use that exact head.
             if (stack.get(DataComponents.PROFILE) != null) {
                 resolvedPetIcon = stack.copy();
                 resolvedIconKey = "menu-profile:" + menuPet;
@@ -185,9 +187,7 @@ public class PetOverlay {
             int level = petLevel;
             if (experience >= 0.0D) level = calculateLevelFromTotalXp((long) experience, rarity, type);
             return new PetMenuInfo(type, rarity, active, heldItem, experience, level);
-        } catch (RuntimeException ignored) {
-            return null;
-        }
+        } catch (RuntimeException ignored) { return null; }
     }
 
     private boolean isActivePetByLore(ItemStack stack) {
@@ -319,7 +319,6 @@ public class PetOverlay {
 
     private static boolean isUsablePetHead(ItemStack stack) { return !stack.isEmpty() && stack.getItem() == Items.PLAYER_HEAD; }
 
-    /** Converts TAB's current-level XP into total pet XP. */
     private long calculateTotalXp(int level, long localXp, String rarity) {
         if (petName.toLowerCase(Locale.ROOT).contains("dragon")) {
             if (level <= 100) return calculateNormalPetTotalXp(level, localXp, rarity);
@@ -351,7 +350,7 @@ public class PetOverlay {
         };
     }
 
-    /** Nopo-style mapping: below legendary 100 use the pet's rarity curve; after that use 1,886,700 XP per overflow level. */
+    /** Nopo-style overflow mapping: rarity curve to legendary 100, then 1,886,700 XP per overflow level. */
     private static int calculateLevelFromTotalXp(long totalXp, String rarity, String type) {
         if (totalXp < LEGENDARY_LEVEL_100_XP) {
             long spent = 0L;
@@ -418,10 +417,11 @@ public class PetOverlay {
     }
 
     private float levelProgress() {
-        if (currentXp >= LEGENDARY_LEVEL_100_XP) {
+        if (currentXp > LEGENDARY_LEVEL_100_XP) {
             long overflowXp = currentXp - LEGENDARY_LEVEL_100_XP;
             return (overflowXp % OVERFLOW_XP_PER_LEVEL) * 100.0f / OVERFLOW_XP_PER_LEVEL;
         }
+        if (currentXp == LEGENDARY_LEVEL_100_XP) return 100.0f;
         if (petLevel >= 100) return Math.min(100.0f, currentXp * 100.0f / LEGENDARY_LEVEL_100_XP);
         if (tabProgress >= 0.0f) return tabProgress;
         return 0.0f;
