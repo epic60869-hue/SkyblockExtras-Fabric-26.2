@@ -3,6 +3,7 @@ package com.skyblockextras;
 import com.skyblockextras.config.SbeConfig;
 import com.skyblockextras.pet.PetLoadoutSync;
 import com.skyblockextras.pet.PetOverlay;
+import com.skyblockextras.pet.PetTabSync;
 import com.skyblockextras.rng.DiscordWebhook;
 import com.skyblockextras.rng.RngDropOverlay;
 import com.skyblockextras.rng.RngTracker;
@@ -28,6 +29,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
     public static RngTracker RNG;
     public static PetOverlay PET;
     public static PetLoadoutSync PET_LOADOUT_SYNC;
+    public static PetTabSync PET_TAB_SYNC;
     public static RngDropOverlay RNG_DROP_OVERLAY;
     public static DiscordWebhook DISCORD_WEBHOOK;
 
@@ -40,6 +42,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
         RNG = new RngTracker(CONFIG);
         PET = new PetOverlay(CONFIG);
         PET_LOADOUT_SYNC = new PetLoadoutSync(PET);
+        PET_TAB_SYNC = new PetTabSync(PET);
         RNG_DROP_OVERLAY = new RngDropOverlay(CONFIG);
         DISCORD_WEBHOOK = new DiscordWebhook(CONFIG, SESSION_START);
 
@@ -56,6 +59,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
                                         RNG = new RngTracker(CONFIG);
                                         PET = new PetOverlay(CONFIG);
                                         PET_LOADOUT_SYNC = new PetLoadoutSync(PET);
+                                        PET_TAB_SYNC = new PetTabSync(PET);
                                         RNG_DROP_OVERLAY = new RngDropOverlay(CONFIG);
                                         DISCORD_WEBHOOK = new DiscordWebhook(CONFIG, SESSION_START);
                                         context.getSource().sendFeedback(Component.literal("[SBE] Configuration reloaded."));
@@ -100,6 +104,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (PET != null) PET.tick(client);
             if (PET_LOADOUT_SYNC != null) PET_LOADOUT_SYNC.tick(client);
+            if (PET_TAB_SYNC != null) PET_TAB_SYNC.tick(client);
         });
 
         System.out.println("[SBE] Skyblock Extras initialized.");
