@@ -65,6 +65,14 @@ public class SkyblockExtrasClient implements ClientModInitializer {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft.player == null) return;
             if (RNG != null) RNG.handle(message);
+            if (DISCORD_WEBHOOK != null) DISCORD_WEBHOOK.handleChatMessage(message.getString());
+        });
+
+        ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) -> {
+            if (message == null) return;
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.player == null) return;
+            if (DISCORD_WEBHOOK != null) DISCORD_WEBHOOK.handleChatMessage(message.getString());
         });
 
         HudElementRegistry.attachElementBefore(
