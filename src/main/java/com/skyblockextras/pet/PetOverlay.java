@@ -90,12 +90,10 @@ public class PetOverlay {
 
     private void readHypixelTab(Minecraft client) {
         if (client.getConnection() == null || client.player == null) return;
-
         Collection<PlayerInfo> players = client.getConnection().getListedOnlinePlayers();
         PlayerInfo localInfo = null;
         StringBuilder localText = new StringBuilder();
         StringBuilder fallbackText = new StringBuilder();
-
         UUID localUuid = client.player.getUUID();
         for (PlayerInfo info : players) {
             Component display = info.getTabListDisplayName();
@@ -107,7 +105,6 @@ public class PetOverlay {
             }
             fallbackText.append(text).append('\n');
         }
-
         if (localInfo != null) {
             String local = localText.toString();
             if (containsPetWidget(local)) {
@@ -115,7 +112,6 @@ public class PetOverlay {
                 return;
             }
         }
-
         parseTabText(fallbackText.toString());
     }
 
@@ -128,34 +124,23 @@ public class PetOverlay {
     private void parseTabText(String raw) {
         if (raw == null || raw.isBlank()) return;
         String[] lines = raw.split("\\R");
-
         for (int i = 0; i < lines.length; i++) {
             String line = stripFormatting(lines[i]);
             if (line.equalsIgnoreCase("Pet:") || line.toLowerCase(Locale.ROOT).startsWith("pet:")) {
                 String inline = line.length() > 4 ? line.substring(4).trim() : "";
                 if (!inline.isBlank()) {
                     ParsedPet parsed = parsePetLine(inline);
-                    if (parsed != null) {
-                        applyTabPet(parsed, lines, i + 1);
-                        return;
-                    }
+                    if (parsed != null) { applyTabPet(parsed, lines, i + 1); return; }
                 }
                 for (int j = i + 1; j < Math.min(lines.length, i + 6); j++) {
                     ParsedPet parsed = parsePetLine(stripFormatting(lines[j]));
-                    if (parsed != null) {
-                        applyTabPet(parsed, lines, j + 1);
-                        return;
-                    }
+                    if (parsed != null) { applyTabPet(parsed, lines, j + 1); return; }
                 }
             }
         }
-
         for (int i = 0; i < lines.length; i++) {
             ParsedPet parsed = parsePetLine(stripFormatting(lines[i]));
-            if (parsed != null) {
-                applyTabPet(parsed, lines, i + 1);
-                return;
-            }
+            if (parsed != null) { applyTabPet(parsed, lines, i + 1); return; }
         }
     }
 
@@ -175,7 +160,6 @@ public class PetOverlay {
     private void applyTabPet(ParsedPet parsed, String[] lines, int startIndex) {
         String oldPet = petName;
         boolean petChanged = !parsed.name.equalsIgnoreCase(oldPet);
-
         if (petChanged) {
             currentXp = 0L;
             tabProgress = -1.0f;
@@ -183,7 +167,6 @@ public class PetOverlay {
             resolvedPetIcon = ItemStack.EMPTY;
             resolvedIconKey = "";
         }
-
         setPet(parsed.name, parsed.rarity, parsed.level);
         long localXp = -1L;
         float progress = -1.0f;
@@ -198,29 +181,20 @@ public class PetOverlay {
                 continue;
             }
             Matcher labelXp = PET_LABEL_XP.matcher(line);
-            if (labelXp.find()) {
-                localXp = parseNumber(labelXp.group(1));
-                continue;
-            }
+            if (labelXp.find()) { localXp = parseNumber(labelXp.group(1)); continue; }
             Matcher item = ITEM_PATTERN.matcher(line);
             if (item.find()) parsedItem = item.group(1).replaceAll("\\s+", " ").trim();
         }
-
         PetCache cached = petCache.get(cacheKey(petName));
         if (!parsedItem.isBlank()) petItem = parsedItem;
         else if (!petChanged && cached != null && !cached.petItem.isBlank()) petItem = cached.petItem;
-
         if (localXp >= 0) currentXp = calculateTotalXp(petLevel, localXp, petRarity);
         else if (!petChanged && cached != null && cached.menuTotalXp >= 0) currentXp = cached.menuTotalXp;
         if (progress >= 0) tabProgress = progress;
-
         if (petChanged) {
             PetCache newCache = petCache.get(cacheKey(petName));
             if (newCache != null) {
-                if (!newCache.icon.isEmpty()) {
-                    resolvedPetIcon = newCache.icon.copy();
-                    resolvedIconKey = "cache:" + cacheKey(petName);
-                }
+                if (!newCache.icon.isEmpty()) { resolvedPetIcon = newCache.icon.copy(); resolvedIconKey = "cache:" + cacheKey(petName); }
                 if (localXp < 0 && newCache.menuTotalXp >= 0) currentXp = newCache.menuTotalXp;
                 if (parsedItem.isBlank() && !newCache.petItem.isBlank()) petItem = newCache.petItem;
             }
@@ -231,27 +205,22 @@ public class PetOverlay {
         if (!(client.gui.screen() instanceof AbstractContainerScreen<?> screen)) return;
         String title = stripFormatting(screen.getTitle().getString());
         if (!title.matches("(?:\\(\\d+/\\d+\\) )?Pets(?:.*)?")) return;
-
         for (var slot : screen.getMenu().slots) {
             ItemStack stack = slot.getItem();
             PetMenuInfo info = readPetMenuInfo(stack);
             if (info == null || !(info.active || isActivePetByLore(stack))) continue;
-
             String menuPet = findPetName(info.type);
             if (menuPet == null) menuPet = info.type;
             setPet(menuPet, info.rarity, info.level);
             if (info.experience >= 0.0D) currentXp = (long) info.experience;
-
             String held = heldItemFromLore(stack);
             if (held.isBlank()) held = info.heldItem;
             if (held != null && !held.isBlank()) petItem = stripFormatting(held).trim();
-
             PetCache cached = petCache.computeIfAbsent(cacheKey(menuPet), k -> new PetCache());
             if (!petItem.isBlank()) cached.petItem = petItem;
             if (info.experience >= 0.0D) cached.menuTotalXp = (long) info.experience;
             cached.rarity = petRarity;
             cached.level = petLevel;
-
             if (stack.get(DataComponents.PROFILE) != null) {
                 cached.icon = stack.copy();
                 resolvedPetIcon = stack.copy();
@@ -299,21 +268,14 @@ public class PetOverlay {
     private void resolveRealPetIcon(Minecraft client) {
         if (client.level == null || client.player == null || petName.equals("No Pet")) return;
         PetCache cached = petCache.get(cacheKey(petName));
-        if (cached != null && !cached.icon.isEmpty()) {
-            resolvedPetIcon = cached.icon.copy();
-            resolvedIconKey = "cache:" + cacheKey(petName);
-            return;
-        }
+        if (cached != null && !cached.icon.isEmpty()) { resolvedPetIcon = cached.icon.copy(); resolvedIconKey = "cache:" + cacheKey(petName); return; }
         if (petName.equalsIgnoreCase("Rose Dragon")) {
             ItemStack rose = createTexturedHead(ROSE_DRAGON_TEXTURE, "Rose Dragon");
             if (!rose.isEmpty()) {
-                resolvedPetIcon = rose;
-                resolvedIconKey = "profile:rose_dragon";
-                petCache.computeIfAbsent(cacheKey(petName), k -> new PetCache()).icon = rose.copy();
-                return;
+                resolvedPetIcon = rose; resolvedIconKey = "profile:rose_dragon";
+                petCache.computeIfAbsent(cacheKey(petName), k -> new PetCache()).icon = rose.copy(); return;
             }
         }
-
         LivingEntity namedAnchor = null;
         double anchorDistance = Double.MAX_VALUE;
         for (Entity entity : client.level.entitiesForRendering()) {
@@ -329,14 +291,8 @@ public class PetOverlay {
         }
         if (namedAnchor != null) {
             ItemStack anchored = findHeadNear(client, namedAnchor, 3.0D);
-            if (!anchored.isEmpty()) {
-                cacheIcon(anchored);
-                resolvedPetIcon = anchored;
-                resolvedIconKey = "anchor:" + cacheKey(petName);
-                return;
-            }
+            if (!anchored.isEmpty()) { cacheIcon(anchored); resolvedPetIcon = anchored; resolvedIconKey = "anchor:" + cacheKey(petName); return; }
         }
-
         double maxDistance = 12.0D;
         var box = client.player.getBoundingBox().inflate(maxDistance);
         Entity bestEntity = null;
@@ -360,27 +316,17 @@ public class PetOverlay {
                 ArmorStand stand = (ArmorStand) entity;
                 String customName = stand.getCustomName() == null ? "" : stripFormatting(stand.getCustomName().getString());
                 Matcher levelMatcher = ENTITY_LEVEL_PATTERN.matcher(customName);
-                if (levelMatcher.find()) {
-                    int entityLevel = parseInt(levelMatcher.group(1));
-                    if (entityLevel == petLevel) score += 1500.0D; else score -= 1000.0D;
-                }
+                if (levelMatcher.find()) { int entityLevel = parseInt(levelMatcher.group(1)); if (entityLevel == petLevel) score += 1500.0D; else score -= 1000.0D; }
                 if (stand.isInvisible()) score += 500.0D;
                 if (stand.isMarker()) score += 350.0D;
                 if (stand.isSmall()) score += 150.0D;
             }
             if (score > bestScore) { bestScore = score; bestEntity = entity; bestStack = head.copy(); }
         }
-        if (bestEntity != null && !bestStack.isEmpty()) {
-            cacheIcon(bestStack);
-            resolvedPetIcon = bestStack;
-            resolvedIconKey = "entity:" + cacheKey(petName);
-        }
+        if (bestEntity != null && !bestStack.isEmpty()) { cacheIcon(bestStack); resolvedPetIcon = bestStack; resolvedIconKey = "entity:" + cacheKey(petName); }
     }
 
-    private void cacheIcon(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return;
-        petCache.computeIfAbsent(cacheKey(petName), k -> new PetCache()).icon = stack.copy();
-    }
+    private void cacheIcon(ItemStack stack) { if (stack != null && !stack.isEmpty()) petCache.computeIfAbsent(cacheKey(petName), k -> new PetCache()).icon = stack.copy(); }
 
     private ItemStack createTexturedHead(String textureValue, String name) {
         try {
@@ -408,22 +354,17 @@ public class PetOverlay {
             double distanceSq = entity.distanceToSqr(anchor);
             if (distanceSq > radiusSq) continue;
             double score = -distanceSq * 10.0D;
-            if (entity instanceof ArmorStand stand) {
-                if (stand.isInvisible()) score += 300.0D;
-                if (stand.isMarker()) score += 250.0D;
-                if (stand.isSmall()) score += 100.0D;
-            } else score += 500.0D;
+            if (entity instanceof ArmorStand stand) { if (stand.isInvisible()) score += 300.0D; if (stand.isMarker()) score += 250.0D; if (stand.isSmall()) score += 100.0D; }
+            else score += 500.0D;
             if (score > bestScore) { bestScore = score; best = head.copy(); }
         }
         return best;
     }
 
-    private static boolean isUsablePetHead(ItemStack stack) {
-        return !stack.isEmpty() && stack.getItem() == Items.PLAYER_HEAD && stack.get(DataComponents.PROFILE) != null;
-    }
+    private static boolean isUsablePetHead(ItemStack stack) { return !stack.isEmpty() && stack.getItem() == Items.PLAYER_HEAD && stack.get(DataComponents.PROFILE) != null; }
 
     private long calculateTotalXp(int level, long localXp, String rarity) {
-        if (level > 100) return LEGENDARY_LEVEL_100_XP + (long) (level - 100) * OVERFLOW_XP_PER_LEVEL + Math.max(0L, localXp);
+        if (level > 100) return LEGENDARY_LEVEL_100_XP + (long)(level - 100) * OVERFLOW_XP_PER_LEVEL + Math.max(0L, localXp);
         return calculateNormalPetTotalXp(level, localXp, rarity);
     }
 
@@ -432,101 +373,51 @@ public class PetOverlay {
         long total = 0L;
         int completed = Math.min(level - 1, 99);
         int offset = getRarityOffset(rarity);
-        for (int i = 0; i < completed; i++) {
-            int index = offset + i;
-            if (index >= PET_XP.length) break;
-            total += PET_XP[index];
-        }
+        for (int i = 0; i < completed; i++) { int index = offset + i; if (index >= PET_XP.length) break; total += PET_XP[index]; }
         return total + Math.max(0L, localXp);
     }
 
-    private static int getRarityOffset(String rarity) {
-        return switch (rarity == null ? "" : rarity.toLowerCase(Locale.ROOT)) {
-            case "common" -> 0;
-            case "uncommon" -> 6;
-            case "rare" -> 11;
-            case "epic" -> 16;
-            default -> 20;
-        };
-    }
-
+    private static int getRarityOffset(String rarity) { return switch (rarity == null ? "" : rarity.toLowerCase(Locale.ROOT)) { case "common" -> 0; case "uncommon" -> 6; case "rare" -> 11; case "epic" -> 16; default -> 20; }; }
     private static int calculateLevelFromTotalXp(long totalXp, String rarity, String type) {
         if (totalXp < LEGENDARY_LEVEL_100_XP) {
-            long spent = 0L;
-            int offset = getRarityOffset(rarity);
-            for (int level = 1; level < 100; level++) {
-                int index = offset + level - 1;
-                long requirement = index < PET_XP.length ? PET_XP[index] : OVERFLOW_XP_PER_LEVEL;
-                if (totalXp < spent + requirement) return level;
-                spent += requirement;
-            }
+            long spent = 0L; int offset = getRarityOffset(rarity);
+            for (int level = 1; level < 100; level++) { int index = offset + level - 1; long requirement = index < PET_XP.length ? PET_XP[index] : OVERFLOW_XP_PER_LEVEL; if (totalXp < spent + requirement) return level; spent += requirement; }
             return 100;
         }
-        return 100 + (int) ((totalXp - LEGENDARY_LEVEL_100_XP) / OVERFLOW_XP_PER_LEVEL);
+        return 100 + (int)((totalXp - LEGENDARY_LEVEL_100_XP) / OVERFLOW_XP_PER_LEVEL);
     }
 
     public void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
         Minecraft client = Minecraft.getInstance();
         if (!config.petOverlayEnabled || client.player == null) return;
         float scale = config.petScale <= 0 ? 1.0f : config.petScale;
-        var pose = graphics.pose();
-        pose.pushMatrix();
-        pose.translate(config.petX, config.petY);
-        pose.scale(scale, scale);
-
+        var pose = graphics.pose(); pose.pushMatrix(); pose.translate(config.petX, config.petY); pose.scale(scale, scale);
         int textX = config.showPetIcon ? 20 : 0;
         boolean showXpLine = config.showPetXp || config.showPetProgress;
         boolean overflow = currentXp >= LEGENDARY_LEVEL_100_XP;
-        int height = 12;
-        if (showXpLine) height += 10;
-        height += 10;
-        if (config.showPetItem && !petItem.isBlank()) height += 10;
+        int height = 12 + (showXpLine ? 10 : 0) + 10 + (config.showPetItem && !petItem.isBlank() ? 10 : 0);
         int width = getOverlayWidth(client, showXpLine, overflow);
-
-        if (config.petBackgroundEnabled) {
-            graphics.fill(textX - 4, -3, width, height + 3, 0xB9101117);
-            graphics.outline(textX - 4, -3, width, height + 3, 0xFF41434E);
-            graphics.fill(textX - 4, -3, textX - 1, height + 3, rarityColor());
-        }
+        if (config.petBackgroundEnabled) { graphics.fill(textX - 4, -3, width, height + 3, 0xB9101117); graphics.outline(textX - 4, -3, width, height + 3, 0xFF41434E); graphics.fill(textX - 4, -3, textX - 1, height + 3, rarityColor()); }
         if (config.showPetIcon && !resolvedPetIcon.isEmpty()) graphics.item(resolvedPetIcon, 0, 0);
-
         int y = 0;
         String levelText = config.showPetLevel ? "[Lvl " + displayLevel() + "] " : "";
         if (!levelText.isEmpty()) graphics.text(client.font, Component.literal(levelText), textX, y, 0xFFAAAAAA, true);
         int nameX = textX + (levelText.isEmpty() ? 0 : client.font.width(levelText));
-        graphics.text(client.font, Component.literal(petName), nameX, y, rarityColor(), true);
-        y += 12;
-
-        if (showXpLine) {
-            graphics.text(client.font, Component.literal(progressLine()), textX, y, 0xFF55FFFF, true);
-            y += 10;
-        }
-
-        graphics.text(client.font, Component.literal(formatNumber(currentXp) + " XP"), textX, y, 0xFF55FFFF, true);
-        y += 10;
-
+        graphics.text(client.font, Component.literal(petName), nameX, y, rarityColor(), true); y += 12;
+        if (showXpLine) { graphics.text(client.font, Component.literal(progressLine()), textX, y, 0xFF55FFFF, true); y += 10; }
+        graphics.text(client.font, Component.literal(formatNumber(currentXp) + " XP"), textX, y, 0xFF55FFFF, true); y += 10;
         if (config.showPetItem && !petItem.isBlank()) graphics.text(client.font, Component.literal("Pet Item: " + petItem), textX, y, 0xFFAA55FF, true);
         pose.popMatrix();
     }
 
     private String progressLine() {
-        if (currentXp >= LEGENDARY_LEVEL_100_XP) {
-            long overflowXp = currentXp - LEGENDARY_LEVEL_100_XP;
-            long progress = overflowXp % OVERFLOW_XP_PER_LEVEL;
-            return formatNumber(progress) + " / " + formatNumber(OVERFLOW_XP_PER_LEVEL);
-        }
+        if (currentXp >= LEGENDARY_LEVEL_100_XP) { long overflowXp = currentXp - LEGENDARY_LEVEL_100_XP; return formatNumber(overflowXp % OVERFLOW_XP_PER_LEVEL) + " / " + formatNumber(OVERFLOW_XP_PER_LEVEL); }
         int level = Math.min(100, Math.max(1, petLevel));
         if (level >= 100) return formatNumber(Math.min(currentXp, LEGENDARY_LEVEL_100_XP)) + " / " + formatNumber(LEGENDARY_LEVEL_100_XP);
-        int offset = getRarityOffset(petRarity);
-        int index = offset + level - 1;
+        int offset = getRarityOffset(petRarity), index = offset + level - 1;
         long requirement = index >= 0 && index < PET_XP.length ? PET_XP[index] : 0L;
-        long completed = 0L;
-        for (int i = 0; i < level - 1; i++) {
-            int xpIndex = offset + i;
-            if (xpIndex >= 0 && xpIndex < PET_XP.length) completed += PET_XP[xpIndex];
-        }
-        long progress = Math.max(0L, currentXp - completed);
-        if (requirement <= 0L) requirement = 1L;
+        long completed = 0L; for (int i = 0; i < level - 1; i++) { int xpIndex = offset + i; if (xpIndex >= 0 && xpIndex < PET_XP.length) completed += PET_XP[xpIndex]; }
+        long progress = Math.max(0L, currentXp - completed); if (requirement <= 0L) requirement = 1L;
         return formatNumber(Math.min(progress, requirement)) + " / " + formatNumber(requirement);
     }
 
@@ -538,61 +429,18 @@ public class PetOverlay {
         return width;
     }
 
-    private int displayLevel() {
-        if (currentXp >= LEGENDARY_LEVEL_100_XP) return 100 + (int) ((currentXp - LEGENDARY_LEVEL_100_XP) / OVERFLOW_XP_PER_LEVEL);
-        return Math.min(100, Math.max(1, petLevel));
-    }
-
-    private int rarityColor() {
-        return switch (petRarity.toLowerCase(Locale.ROOT)) {
-            case "common" -> 0xFFAAAAAA; case "uncommon" -> 0xFF55FF55; case "rare" -> 0xFF5555FF;
-            case "epic" -> 0xFFAA00AA; case "legendary" -> 0xFFFFAA00; case "mythic" -> 0xFFFF55FF; default -> 0xFFFFFFFF;
-        };
-    }
-
+    private int displayLevel() { if (currentXp >= LEGENDARY_LEVEL_100_XP) return 100 + (int)((currentXp - LEGENDARY_LEVEL_100_XP) / OVERFLOW_XP_PER_LEVEL); return Math.min(100, Math.max(1, petLevel)); }
+    private int rarityColor() { return switch (petRarity.toLowerCase(Locale.ROOT)) { case "common" -> 0xFFAAAAAA; case "uncommon" -> 0xFF55FF55; case "rare" -> 0xFF5555FF; case "epic" -> 0xFFAA00AA; case "legendary" -> 0xFFFFAA00; case "mythic" -> 0xFFFF55FF; default -> 0xFFFFFFFF; }; }
     private String formatNumber(long n) { return String.format(Locale.US, "%,d", Math.max(0, n)); }
     private static int parseInt(String value) { try { return Integer.parseInt(value); } catch (NumberFormatException e) { return -1; } }
     private static float parsePercent(String value) { try { return Float.parseFloat(value.replace(",", "")); } catch (NumberFormatException e) { return -1.0f; } }
-    private static long parseNumber(String value) {
-        String v = value.replace(",", "").trim().toUpperCase(Locale.ROOT);
-        try {
-            if (v.endsWith("B")) return (long)(Double.parseDouble(v.substring(0,v.length()-1))*1_000_000_000D);
-            if (v.endsWith("M")) return (long)(Double.parseDouble(v.substring(0,v.length()-1))*1_000_000D);
-            if (v.endsWith("K")) return (long)(Double.parseDouble(v.substring(0,v.length()-1))*1_000D);
-            return (long)Double.parseDouble(v);
-        } catch (NumberFormatException e) { return -1L; }
-    }
-    private static String findPetName(String text) {
-        String cleaned = stripFormatting(text).replaceAll("\\s+", " ").trim().replaceAll("^[✦✧★☆]+\\s*", "").trim();
-        String lower = cleaned.toLowerCase(Locale.ROOT);
-        for (String pet : KNOWN_PETS) {
-            String target = pet.toLowerCase(Locale.ROOT);
-            if (lower.equals(target) || lower.startsWith(target + " ") || lower.endsWith(" " + target) || lower.contains(" " + target + " ")) return pet;
-        }
-        return null;
-    }
-    private static String findRarity(String text) {
-        String lower = text.toLowerCase(Locale.ROOT);
-        for (String rarity : new String[]{"Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common"}) if (lower.contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
-        return "";
-    }
-    private static String stripFormatting(String s) { return s == null ? "" : s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim(); }
-    private void setPet(String name, String rarity, int level) {
-        if (name == null || name.isBlank()) return;
-        petName = name; if (rarity != null && !rarity.isBlank()) petRarity = rarity; petLevel = Math.max(1, Math.min(200, level));
-        PetCache cached = petCache.get(cacheKey(name));
-        if (cached != null && !cached.petItem.isBlank() && petItem.isBlank()) petItem = cached.petItem;
-        if (cached != null && !cached.icon.isEmpty() && resolvedPetIcon.isEmpty()) { resolvedPetIcon = cached.icon.copy(); resolvedIconKey = "cache:" + cacheKey(name); }
-    }
-    private static String cacheKey(String name) { return name == null ? "" : name.toLowerCase(Locale.ROOT).trim(); }
-
-    private record ParsedPet(String name, String rarity, int level) {}
-    private record PetMenuInfo(String type, String rarity, boolean active, String heldItem, double experience, int level) {}
-    private static final class PetCache {
-        private ItemStack icon = ItemStack.EMPTY;
-        private String petItem = "";
-        private long menuTotalXp = -1L;
-        private String rarity = "";
-        private int level = 1;
-    }
+    private static long parseNumber(String value) { String v=value.replace(",","").trim().toUpperCase(Locale.ROOT); try { if(v.endsWith("B")) return (long)(Double.parseDouble(v.substring(0,v.length()-1))*1_000_000_000D); if(v.endsWith("M")) return (long)(Double.parseDouble(v.substring(0,v.length()-1))*1_000_000D); if(v.endsWith("K")) return (long)(Double.parseDouble(v.substring(0,v.length()-1))*1_000D); return (long)Double.parseDouble(v); } catch(NumberFormatException e){return -1L;} }
+    private static String findPetName(String text) { String cleaned=stripFormatting(text).replaceAll("\\s+"," ").trim().replaceAll("^[✦✧★☆]+\\s*","").trim(); String lower=cleaned.toLowerCase(Locale.ROOT); for(String pet:KNOWN_PETS){String target=pet.toLowerCase(Locale.ROOT); if(lower.equals(target)||lower.startsWith(target+" ")||lower.endsWith(" "+target)||lower.contains(" "+target+" ")) return pet;} return null; }
+    private static String findRarity(String text) { String lower=text.toLowerCase(Locale.ROOT); for(String rarity:new String[]{"Mythic","Legendary","Epic","Rare","Uncommon","Common"}) if(lower.contains(rarity.toLowerCase(Locale.ROOT))) return rarity; return ""; }
+    private static String stripFormatting(String s) { return s==null?"":s.replaceAll("§[0-9a-fk-orx]","").replaceAll("\\s+"," ").trim(); }
+    private void setPet(String name,String rarity,int level){ if(name==null||name.isBlank())return; petName=name; if(rarity!=null&&!rarity.isBlank())petRarity=rarity; petLevel=Math.max(1,Math.min(200,level)); PetCache cached=petCache.get(cacheKey(name)); if(cached!=null&&!cached.petItem.isBlank()&&petItem.isBlank())petItem=cached.petItem; if(cached!=null&&!cached.icon.isEmpty()&&resolvedPetIcon.isEmpty()){resolvedPetIcon=cached.icon.copy();resolvedIconKey="cache:"+cacheKey(name);} }
+    private static String cacheKey(String name){return name==null?"":name.toLowerCase(Locale.ROOT).trim();}
+    private record ParsedPet(String name,String rarity,int level){}
+    private record PetMenuInfo(String type,String rarity,boolean active,String heldItem,double experience,int level){}
+    private static final class PetCache { private ItemStack icon=ItemStack.EMPTY; private String petItem=""; private long menuTotalXp=-1L; private String rarity=""; private int level=1; }
 }
