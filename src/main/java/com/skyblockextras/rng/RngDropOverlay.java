@@ -1,5 +1,8 @@
 package com.skyblockextras.rng;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.skyblockextras.config.SbeConfig;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -11,37 +14,42 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.concurrent.ConcurrentHashMap;
 
-/** Clean center-screen RNG announcement overlay. */
+/** Center-screen RNG announcement overlay with cached Bazaar/LBIN prices and stack counts. */
 public class RngDropOverlay {
     private final SbeConfig config;
     private final PriceService prices = new PriceService();
 
     private String item = "";
     private String price = "Looking up price...";
+    private int amount = 1;
     private long expiresAt = 0L;
     private long sequence = 0L;
+    private long lastSameItemAt = 0L;
 
-    public RngDropOverlay(SbeConfig config) {
-        this.config = config;
-    }
+    public RngDropOverlay(SbeConfig config) { this.config = config; }
 
-    public void show(String itemName) {
+    public synchronized void show(String itemName) {
         if (!config.rngDropOverlayEnabled || itemName == null || itemName.isBlank()) return;
+        long now = System.currentTimeMillis();
+        boolean sameBurst = itemName.equals(item) && now - lastSameItemAt <= 3000L;
+        if (sameBurst) amount++;
+        else amount = 1;
+
         item = itemName;
+        lastSameItemAt = now;
+        expiresAt = now + 6000L;
         price = "Looking up price...";
-        expiresAt = System.currentTimeMillis() + 5000L;
         long requestId = ++sequence;
 
-        prices.lookup(itemName).thenAccept(result -> {
+        prices.lookup(itemName).thenAccept(unitPrice -> {
             Minecraft client = Minecraft.getInstance();
             client.execute(() -> {
-                if (requestId != sequence) return;
-                price = result;
+                if (requestId != sequence || unitPrice == null) return;
+                price = formatPrice(unitPrice * amount);
             });
         });
     }
@@ -51,11 +59,14 @@ public class RngDropOverlay {
 
         Minecraft client = Minecraft.getInstance();
         float scale = Math.max(0.5f, Math.min(3.0f, config.rngDropOverlayScale));
-        String priceText = "(" + price + ")";
+        String countText = amount > 1 ? "x" + amount : "";
+        String title = amount > 1 ? "RNG DROP!  " + countText : "RNG DROP!";
+        String priceText = "Value: " + price;
         int itemWidth = client.font.width(item);
+        int titleWidth = client.font.width(title);
         int priceWidth = client.font.width(priceText);
-        int width = Math.max(190, Math.max(itemWidth, priceWidth) + 50);
-        int height = 70;
+        int width = Math.max(240, Math.max(itemWidth, Math.max(titleWidth, priceWidth)) + 70);
+        int height = 82;
         int scaledWidth = Math.round(width * scale);
         int scaledHeight = Math.round(height * scale);
         int screenWidth = client.getWindow().getGuiScaledWidth();
@@ -69,15 +80,17 @@ public class RngDropOverlay {
         pose.scale(scale, scale);
 
         if (config.rngDropOverlayBackgroundEnabled) {
-            graphics.fill(0, 0, width, height, 0xE6111218);
-            graphics.outline(0, 0, width, height, 0xFF41434E);
-            graphics.fill(1, 1, width - 1, 3, 0xFFB96BFF);
+            graphics.fill(-4, -4, width + 4, height + 4, 0x55200055);
+            graphics.outline(-3, -3, width + 3, height + 3, 0xFFFF55FF);
+            graphics.fill(0, 0, width, height, 0xEE101018);
+            graphics.outline(0, 0, width, height, 0xFFFFA3FF);
+            graphics.fill(1, 1, width - 1, 5, 0xFFFF55FF);
+            graphics.fill(1, height - 5, width - 1, height - 1, 0xFF8A2BE2);
         }
 
-        String title = "RNG DROP!";
-        graphics.text(client.font, Component.literal(title), (width - client.font.width(title)) / 2, 10, 0xFFC77DFF, true);
-        graphics.text(client.font, Component.literal(item), (width - itemWidth) / 2, 29, 0xFFFFFFFF, true);
-        graphics.text(client.font, Component.literal(priceText), (width - priceWidth) / 2, 47, 0xFFFFD45A, true);
+        graphics.text(client.font, Component.literal(title), (width - titleWidth) / 2, 10, 0xFFFF55FF, true);
+        graphics.text(client.font, Component.literal(item), (width - itemWidth) / 2, 31, 0xFFFFFFFF, true);
+        graphics.text(client.font, Component.literal(priceText), (width - priceWidth) / 2, 52, 0xFFFFD45A, true);
         pose.popMatrix();
     }
 
@@ -87,21 +100,51 @@ public class RngDropOverlay {
 
     public String getItem() { return item; }
     public String getPrice() { return price; }
+    public int getAmount() { return amount; }
+
+    private String formatPrice(double value) {
+        return switch (config.rngDropPriceFormat == null ? "SHORT" : config.rngDropPriceFormat.toUpperCase(Locale.ROOT)) {
+            case "FULL" -> String.format(Locale.ROOT, "%,.0f", value);
+            case "COINS" -> String.format(Locale.ROOT, "%.2fM coins", value / 1_000_000D);
+            default -> compact(value);
+        };
+    }
+
+    private String compact(double value) {
+        if (value >= 1_000_000_000) return String.format(Locale.ROOT, "%.2fB", value / 1_000_000_000D);
+        if (value >= 1_000_000) return String.format(Locale.ROOT, "%.2fM", value / 1_000_000D);
+        if (value >= 1_000) return String.format(Locale.ROOT, "%.2fK", value / 1_000D);
+        return String.format(Locale.ROOT, "%,.0f", value);
+    }
 
     private final class PriceService {
         private final HttpClient client = HttpClient.newBuilder().build();
-        private final AtomicLong resourceRefresh = new AtomicLong(0L);
+        private final Map<String, Double> cache = new ConcurrentHashMap<>();
+        private final Map<String, Long> cacheTimes = new ConcurrentHashMap<>();
         private volatile String resourceItems = "";
         private volatile long resourceFetchedAt = 0L;
+        private volatile String lowestBins = "";
+        private volatile long lowestBinsFetchedAt = 0L;
 
-        CompletableFuture<String> lookup(String displayName) {
+        CompletableFuture<Double> lookup(String displayName) {
+            String key = normalize(displayName);
+            Double cached = cache.get(key);
+            if (cached != null && System.currentTimeMillis() - cacheTimes.getOrDefault(key, 0L) < 60_000L) {
+                return CompletableFuture.completedFuture(cached);
+            }
             return bazaarPrice(displayName).thenCompose(bazaar -> {
-                if (bazaar != null) return CompletableFuture.completedFuture(bazaar);
-                return auctionHousePrice(displayName);
+                if (bazaar != null && bazaar > 0) return CompletableFuture.completedFuture(bazaar);
+                return lowestBinPrice(displayName);
+            }).thenApply(value -> {
+                if (value != null && value > 0) {
+                    cache.put(key, value);
+                    cacheTimes.put(key, System.currentTimeMillis());
+                }
+                return value;
             });
         }
 
-        private CompletableFuture<String> bazaarPrice(String displayName) {
+        private CompletableFuture<Double> bazaarPrice(String displayName) {
             return ensureResources().thenCompose(v -> {
                 String id = findItemId(displayName, resourceItems);
                 if (id == null) return CompletableFuture.completedFuture(null);
@@ -110,9 +153,12 @@ public class RngDropOverlay {
             });
         }
 
-        private CompletableFuture<String> auctionHousePrice(String displayName) {
-            return get("https://api.hypixel.net/v2/skyblock/auctions")
-                    .thenApply(body -> parseLowestBin(body, displayName));
+        private CompletableFuture<Double> lowestBinPrice(String displayName) {
+            return ensureLowestBins().thenApply(json -> {
+                String id = findItemId(displayName, resourceItems);
+                if (id == null || json == null || json.isBlank()) return null;
+                return parseLowestBinMap(json, id);
+            });
         }
 
         private CompletableFuture<Void> ensureResources() {
@@ -120,14 +166,26 @@ public class RngDropOverlay {
             if (!resourceItems.isBlank() && now - resourceFetchedAt < 6 * 60 * 60 * 1000L) {
                 return CompletableFuture.completedFuture(null);
             }
-            long marker = resourceRefresh.incrementAndGet();
-            return get("https://api.hypixel.net/v2/resources/skyblock/items")
-                    .thenAccept(body -> {
-                        if (marker == resourceRefresh.get()) {
-                            resourceItems = body;
-                            resourceFetchedAt = System.currentTimeMillis();
-                        }
-                    });
+            return get("https://api.hypixel.net/v2/resources/skyblock/items").thenAccept(body -> {
+                if (body != null && !body.isBlank()) {
+                    resourceItems = body;
+                    resourceFetchedAt = System.currentTimeMillis();
+                }
+            });
+        }
+
+        private CompletableFuture<String> ensureLowestBins() {
+            long now = System.currentTimeMillis();
+            if (!lowestBins.isBlank() && now - lowestBinsFetchedAt < 60_000L) {
+                return CompletableFuture.completedFuture(lowestBins);
+            }
+            return get("https://lb.tricked.dev/lowestbins").thenApply(body -> {
+                if (body != null && !body.isBlank()) {
+                    lowestBins = body;
+                    lowestBinsFetchedAt = System.currentTimeMillis();
+                }
+                return lowestBins;
+            });
         }
 
         private CompletableFuture<String> get(String url) {
@@ -141,55 +199,55 @@ public class RngDropOverlay {
 
         private String findItemId(String name, String json) {
             if (json == null || json.isBlank()) return null;
-            String target = normalize(name);
-            Pattern p = Pattern.compile("\\\"id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"[\\s\\S]{0,500}\\\"name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
-            Matcher m = p.matcher(json);
-            while (m.find()) if (normalize(m.group(2)).equals(target)) return m.group(1);
+            try {
+                JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+                JsonObject items = root.has("items") && root.get("items").isJsonObject()
+                        ? root.getAsJsonObject("items") : root;
+                String target = normalize(name);
+                for (Map.Entry<String, JsonElement> entry : items.entrySet()) {
+                    if (!entry.getValue().isJsonObject()) continue;
+                    JsonObject obj = entry.getValue().getAsJsonObject();
+                    if (obj.has("name") && target.equals(normalize(obj.get("name").getAsString()))) return entry.getKey();
+                }
+            } catch (Exception ignored) { }
             return null;
         }
 
-        private String parseBazaar(String json, String id) {
-            if (json == null || json.isBlank()) return null;
-            String needle = "\"" + id + "\"";
-            int at = json.indexOf(needle);
-            if (at < 0) return null;
-            int end = Math.min(json.length(), at + 5000);
-            String block = json.substring(at, end);
-            Matcher m = Pattern.compile("\\\"sellPrice\\\"\\s*:\\s*([0-9.]+)").matcher(block);
-            if (!m.find()) return null;
-            return formatPrice(Double.parseDouble(m.group(1)));
+        private Double parseBazaar(String json, String id) {
+            try {
+                JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+                JsonObject products = root.getAsJsonObject("products");
+                if (products == null || !products.has(id)) return null;
+                JsonObject product = products.getAsJsonObject(id);
+                if (!product.has("quick_status")) return null;
+                JsonObject quick = product.getAsJsonObject("quick_status");
+                return quick.has("sellPrice") ? quick.get("sellPrice").getAsDouble() : null;
+            } catch (Exception ignored) { return null; }
         }
 
-        private String parseLowestBin(String json, String displayName) {
-            if (json == null || json.isBlank()) return "Price unavailable";
-            String target = normalize(displayName);
-            Matcher m = Pattern.compile("\\\"item_name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"[\\s\\S]{0,500}\\\"bin\\\"\\s*:\\s*(true|false)[\\s\\S]{0,300}\\\"starting_bid\\\"\\s*:\\s*(\\d+)").matcher(json);
-            long lowest = Long.MAX_VALUE;
-            while (m.find()) {
-                if (Boolean.parseBoolean(m.group(2)) && normalize(m.group(1)).equals(target)) {
-                    lowest = Math.min(lowest, Long.parseLong(m.group(3)));
+        private Double parseLowestBinMap(String json, String id) {
+            try {
+                JsonElement root = JsonParser.parseString(json);
+                if (!root.isJsonObject()) return null;
+                JsonObject obj = root.getAsJsonObject();
+                JsonElement value = obj.get(id);
+                if (value == null) value = obj.get(id.toUpperCase(Locale.ROOT));
+                if (value == null) return null;
+                if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) return value.getAsDouble();
+                if (value.isJsonObject()) {
+                    JsonObject v = value.getAsJsonObject();
+                    for (String key : new String[]{"price", "lowest", "starting_bid", "bin"}) {
+                        if (v.has(key) && v.get(key).isJsonPrimitive()) {
+                            try { return v.get(key).getAsDouble(); } catch (Exception ignored) { }
+                        }
+                    }
                 }
-            }
-            return lowest == Long.MAX_VALUE ? "Price unavailable" : formatPrice(lowest);
+            } catch (Exception ignored) { }
+            return null;
         }
 
         private String normalize(String value) {
             return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
-        }
-
-        private String formatPrice(double value) {
-            return switch (config.rngDropPriceFormat == null ? "SHORT" : config.rngDropPriceFormat.toUpperCase(Locale.ROOT)) {
-                case "FULL" -> String.format(Locale.ROOT, "%,.0f", value);
-                case "COINS" -> String.format(Locale.ROOT, "%.2fM coins", value / 1_000_000D);
-                default -> compact(value);
-            };
-        }
-
-        private String compact(double value) {
-            if (value >= 1_000_000_000) return String.format(Locale.ROOT, "%.2fB", value / 1_000_000_000D);
-            if (value >= 1_000_000) return String.format(Locale.ROOT, "%.2fM", value / 1_000_000D);
-            if (value >= 1_000) return String.format(Locale.ROOT, "%.2fK", value / 1_000D);
-            return String.format(Locale.ROOT, "%,.0f", value);
         }
     }
 }
