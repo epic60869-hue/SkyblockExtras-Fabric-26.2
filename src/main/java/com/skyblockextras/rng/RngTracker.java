@@ -3,11 +3,11 @@ package com.skyblockextras.rng;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonArray;
 import com.skyblockextras.SkyblockExtrasClient;
 import com.skyblockextras.config.SbeConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -30,14 +30,18 @@ public class RngTracker {
     private void loadDrops() {
         exactDrops.clear();
         try (InputStream stream = RngTracker.class.getClassLoader().getResourceAsStream("rng_drops.json")) {
-            if (stream == null) { System.err.println("[SBE RNG] Could not find rng_drops.json"); return; }
+            if (stream == null) {
+                System.err.println("[SBE RNG] Could not find rng_drops.json");
+                return;
+            }
             JsonObject root = GSON.fromJson(new InputStreamReader(stream, StandardCharsets.UTF_8), JsonObject.class);
             if (root == null) return;
+
             JsonObject farming = getObject(root, "farming");
             if (farming != null) {
-                if (config.farmingRngEnabled && config.harvestFeastEnabled) addArray(farming, "harvestFeast");
-                if (config.farmingRngEnabled && config.dyesEnabled) addArray(farming, "farmingDyes");
-                if (config.farmingRngEnabled && config.slugEnabled) addArray(farming, "slugs");
+                addArray(farming, "harvestFeast");
+                addArray(farming, "farmingDyes");
+                addArray(farming, "slugs");
             }
             addCategory(root, "mining");
             addCategory(root, "fishing");
@@ -78,7 +82,22 @@ public class RngTracker {
     public void handle(Component message) {
         if (message == null || !config.farmingRngEnabled) return;
         String item = RngMessageMatcher.findDrop(message.getString(), exactDrops.keySet());
-        if (item != null) recordDrop(item);
+        if (item != null && isEnabled(item)) recordDrop(item);
+    }
+
+    private boolean isEnabled(String item) {
+        if (item == null || item.isBlank()) return false;
+        if (item.equalsIgnoreCase("Epic Slug")) return config.slugEnabled && config.epicSlug;
+        if (item.equalsIgnoreCase("Legendary Slug")) return config.slugEnabled && config.legendarySlug;
+
+        Boolean harvest = config.harvestFeastDrops.get(item);
+        if (harvest != null) return config.harvestFeastEnabled && harvest;
+
+        Boolean dye = config.farmingDyes.get(item);
+        if (dye != null) return config.dyesEnabled && dye;
+
+        // Non-farming categories are left available for future configuration pages.
+        return true;
     }
 
     private void recordDrop(String item) {
