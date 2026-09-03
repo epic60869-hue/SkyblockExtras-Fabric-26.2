@@ -83,8 +83,22 @@ public class RngTracker {
 
     public void handle(Component message) {
         if (message == null || !config.farmingRngEnabled) return;
-        String item = RngMessageMatcher.findDrop(message.getString(), exactDrops.keySet());
-        if (item != null && isEnabled(item)) recordDrop(item);
+
+        String rawMessage = RngMessageMatcher.stripMinecraftFormatting(message.getString());
+        String item = RngMessageMatcher.findDrop(rawMessage, exactDrops.keySet());
+        if (item == null || !isEnabled(item)) return;
+
+        // Harvest Feast drops must use Hypixel's exact RARE CROP! announcement.
+        // This prevents normal chat/item-name mentions from triggering the RNG.
+        if (isHarvestFeastDrop(item) && !RngMessageMatcher.containsWholePhrase(rawMessage, "RARE CROP!")) {
+            return;
+        }
+
+        recordDrop(item);
+    }
+
+    private boolean isHarvestFeastDrop(String item) {
+        return config.harvestFeastDrops != null && config.harvestFeastDrops.containsKey(item);
     }
 
     private boolean isEnabled(String item) {
