@@ -98,12 +98,7 @@ public class PetOverlay {
         if (progress >= 0) tabProgress = progress;
     }
 
-    /**
-     * Finds the actual Hypixel pet head. Hypixel can represent pets as ArmorStands
-     * or ItemDisplays. We score candidates instead of using the nearest player head,
-     * so nearby Slugs/NPCs cannot replace the pet icon. A plain Steve head is never
-     * used as a visual fallback when the real pet entity has not been found.
-     */
+    /** Finds the actual Hypixel pet head without using a nearest-player-head fallback. */
     private void resolveRealPetIcon(Minecraft client) {
         if (client.level == null || client.player == null || petName.equals("No Pet")) return;
         double maxDistance = 8.0D;
@@ -112,7 +107,7 @@ public class PetOverlay {
         ItemStack bestStack = ItemStack.EMPTY;
         double bestScore = Double.NEGATIVE_INFINITY;
 
-        for (Entity entity : client.level.getEntities(null, box, Entity::isAlive)) {
+        for (Entity entity : client.level.getEntities((Entity) null, box, Entity::isAlive)) {
             ItemStack head = ItemStack.EMPTY;
             boolean armorStand = entity instanceof ArmorStand;
             if (armorStand) head = ((ArmorStand) entity).getItemBySlot(EquipmentSlot.HEAD);
