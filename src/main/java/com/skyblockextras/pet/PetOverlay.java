@@ -42,9 +42,7 @@ public class PetOverlay {
         936700,1016700,1101700,1191700,1286700,1386700,1496700,1616700,1746700,1886700
     };
 
-    public PetOverlay(SbeConfig config) {
-        this.config = config;
-    }
+    public PetOverlay(SbeConfig config) { this.config = config; }
 
     public void tick(Minecraft client) {
         if (!config.petOverlayEnabled || client == null || client.player == null) return;
@@ -57,21 +55,16 @@ public class PetOverlay {
         if (client.getConnection() == null) return;
         StringBuilder all = new StringBuilder();
         Collection<PlayerInfo> players = client.getConnection().getListedOnlinePlayers();
-
         for (PlayerInfo info : players) {
             Component display = info.getTabListDisplayName();
             if (display != null) all.append(display.getString()).append('\n');
         }
-        for (PlayerInfo info : players) {
-            all.append(info.getProfile().name()).append('\n');
-        }
-
+        for (PlayerInfo info : players) all.append(info.getProfile().name()).append('\n');
         parseTabText(all.toString());
     }
 
     private void parseTabText(String raw) {
         if (raw == null || raw.isBlank()) return;
-
         String[] lines = raw.split("\\R");
         boolean foundPet = false;
         long tabXp = -1L;
@@ -108,43 +101,27 @@ public class PetOverlay {
                             setPet(name, rarity, level);
                             foundPet = true;
                         }
-                    } catch (NumberFormatException ignored) {
-                    }
+                    } catch (NumberFormatException ignored) { }
                 }
             }
         }
 
         if (!foundPet) return;
-
         if (tabXp >= 0L) currentXp = tabXp;
         requiredXp = tabRequired >= 0L ? tabRequired : xpToLevelCap(petLevel, petRarity, petName);
 
         overflowLevel = calcOverflowLevel(currentXp, petRarity);
         long progressXp = calcLeftOverXp(currentXp, petRarity);
-        if (progressXp >= 0L) {
-            overflowXp = Math.max(0L, progressXp);
-        } else {
-            overflowXp = Math.max(0L, currentXp - requiredXp);
-        }
+        overflowXp = progressXp >= 0L ? Math.max(0L, progressXp) : Math.max(0L, currentXp - requiredXp);
     }
 
-    private static String cleanItemName(String item) {
-        return item.replaceAll("\\s+", " ").trim();
-    }
-
-    private static int indexOfIgnoreCase(String text, String needle) {
-        return text.toLowerCase(Locale.ROOT).indexOf(needle.toLowerCase(Locale.ROOT));
-    }
-
-    private static String stripFormatting(String s) {
-        return s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim();
-    }
+    private static String cleanItemName(String item) { return item.replaceAll("\\s+", " ").trim(); }
+    private static int indexOfIgnoreCase(String text, String needle) { return text.toLowerCase(Locale.ROOT).indexOf(needle.toLowerCase(Locale.ROOT)); }
+    private static String stripFormatting(String s) { return s.replaceAll("§[0-9a-fk-orx]", "").replaceAll("\\s+", " ").trim(); }
 
     private static String findRarity(String text) {
         String[] rarities = {"Mythic", "Legendary", "Epic", "Rare", "Uncommon", "Common"};
-        for (String rarity : rarities) {
-            if (text.toLowerCase(Locale.ROOT).contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
-        }
+        for (String rarity : rarities) if (text.toLowerCase(Locale.ROOT).contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
         return "";
     }
 
@@ -160,9 +137,7 @@ public class PetOverlay {
             if (v.endsWith("M")) return Math.round(Double.parseDouble(v.substring(0, v.length() - 1)) * 1_000_000D);
             if (v.endsWith("K")) return Math.round(Double.parseDouble(v.substring(0, v.length() - 1)) * 1_000D);
             return Math.round(Double.parseDouble(v));
-        } catch (NumberFormatException e) {
-            return -1L;
-        }
+        } catch (NumberFormatException e) { return -1L; }
     }
 
     private static long xpToLevelCap(int level, String rarity, String name) {
@@ -216,11 +191,8 @@ public class PetOverlay {
         int level = 0;
         while (exp > 0L && level < 1000) {
             long needed = getXpForLevel(level, rarity);
-            if (exp > needed) {
-                exp -= needed;
-            } else {
-                return exp;
-            }
+            if (exp > needed) exp -= needed;
+            else return exp;
             level++;
         }
         return -1L;
@@ -268,7 +240,6 @@ public class PetOverlay {
         if (config.showOverflowXp && overflowLevel > petLevel) contentHeight += 10;
         if (config.showPetItem && !petItem.isBlank()) contentHeight += 10;
 
-        // Compact optional card. Unlike the old version there is no XP bar or long line.
         if (config.petBackgroundEnabled) {
             int contentWidth = getOverlayWidth();
             graphics.fill(textX - 4, -3, contentWidth, contentHeight + 3, 0xB9101117);
@@ -276,17 +247,15 @@ public class PetOverlay {
             graphics.fill(textX - 4, -3, textX - 1, contentHeight + 3, rarityColor());
         }
 
+        if (config.showPetIcon) graphics.item(petIcon(), 0, 0);
+
         int y = 0;
-
-        if (config.showPetIcon) {
-            graphics.item(petIcon(), 0, 0);
+        String levelText = config.showPetLevel ? "[Lvl " + petLevel + "] " : "";
+        if (!levelText.isEmpty()) {
+            graphics.text(client.font, Component.literal(levelText), textX, y, 0xFFFFFFFF, true);
         }
-
-        StringBuilder name = new StringBuilder();
-        if (config.showPetLevel) name.append("[Lvl ").append(petLevel).append("] ");
-        name.append(petName);
-        int nameColor = petRarity.isBlank() ? 0xFFFFFFFF : rarityColor();
-        graphics.text(client.font, Component.literal(name.toString()), textX, y, nameColor, true);
+        int petNameX = textX + (levelText.isEmpty() ? 0 : client.font.width(levelText));
+        graphics.text(client.font, Component.literal(petName), petNameX, y, rarityColor(), true);
         y += 12;
 
         if (config.showPetProgress) {
@@ -313,10 +282,8 @@ public class PetOverlay {
 
     private float levelProgress() {
         if (petLevel <= 0) return 0.0f;
-
         long startXp = getCalculativeXpForLevel(Math.max(0, petLevel - 1), petRarity);
         long needed = getXpForLevel(Math.max(0, petLevel - 1), petRarity);
-
         if (needed <= 0L) return 0.0f;
         if (currentXp >= startXp + needed) return 100.0f;
         return Math.max(0.0f, Math.min(100.0f, (currentXp - startXp) * 100.0f / needed));
@@ -347,13 +314,8 @@ public class PetOverlay {
         return width;
     }
 
-    private String formatPercent(float percent) {
-        return String.format(Locale.ROOT, "%.1f%%", percent);
-    }
-
-    private String formatNumber(long number) {
-        return String.format(Locale.ROOT, "%,d", Math.max(0L, number));
-    }
+    private String formatPercent(float percent) { return String.format(Locale.ROOT, "%.1f%%", percent); }
+    private String formatNumber(long number) { return String.format(Locale.ROOT, "%,d", Math.max(0L, number)); }
 
     public void setPet(String name, String rarity, int level) {
         if (name != null && !name.isBlank()) petName = name;
@@ -368,9 +330,7 @@ public class PetOverlay {
         overflowLevel = calcOverflowLevel(currentXp, petRarity);
     }
 
-    public void setPetItem(String item) {
-        petItem = item == null ? "" : item;
-    }
+    public void setPetItem(String item) { petItem = item == null ? "" : item; }
 
     public void clearPet() {
         petName = "No Pet";
