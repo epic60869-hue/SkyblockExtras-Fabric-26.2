@@ -16,11 +16,11 @@ public final class RngMessageMatcher {
         String normalized = stripMinecraftFormatting(message).trim();
         if (normalized.isBlank()) return null;
 
-        // Match the exact item name anywhere in the message. Harvest Feast
-        // drops are validated separately by RngTracker so they still require
-        // the real "RARE CROP!" announcement.
+        // RNG farming drops are only valid when Hypixel announces them as
+        // "RARE CROP! <item>". This prevents ordinary chat, item tooltips,
+        // copied messages and the old "RARE DROP!" format from triggering.
         for (String item : trackableDrops) {
-            if (containsWholePhrase(normalized, item)) return item;
+            if (isRareCropAnnouncement(normalized, item)) return item;
         }
         return null;
     }
