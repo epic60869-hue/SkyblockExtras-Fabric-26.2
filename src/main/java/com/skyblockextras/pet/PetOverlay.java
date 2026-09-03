@@ -7,12 +7,12 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
 
-import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/** Hypixel SkyBlock pet overlay. Reads the information that Hypixel puts in the tab list. */
 public class PetOverlay {
     private final SbeConfig config;
 
@@ -20,15 +20,19 @@ public class PetOverlay {
     private String petRarity = "";
     private int petLevel = 1;
     private long currentXp = 0L;
-    private long requiredXp = 0L;
+    private long requiredXp = 25_353_230L;
     private long overflowXp = 0L;
     private String petItem = "";
     private int tabScanCooldown = 0;
 
+    // Examples accepted: "Pet: [Lvl 100] Legendary Golden Dragon", "[Lvl 100] Golden Dragon Legendary"
     private static final Pattern PET_PATTERN = Pattern.compile(
             "(?i)\\[?lvl\\s*(\\d+)\\]?\\s+(.+)");
+
+    // Examples accepted: "Pet XP: 12,345", "Pet XP: 12.3M", "Pet XP: 12,345 / 25,353,230"
     private static final Pattern XP_PATTERN = Pattern.compile(
             "(?i)pet\\s*xp\\s*[:：]\\s*([0-9,.]+(?:[kmb])?)");
+
     private static final Pattern ITEM_PATTERN = Pattern.compile(
             "(?i)(?:held item|pet item)\\s*[:：]\\s*(.+)");
 
@@ -43,31 +47,28 @@ public class PetOverlay {
         readHypixelTab(client);
     }
 
+    /**
+     * Hypixel exposes its tab-list widgets as PlayerInfo display names.
+     * We deliberately use the network connection rather than Gui#getTabList,
+     * because that GUI accessor does not exist in Minecraft 26.2.
+     */
     private void readHypixelTab(Minecraft client) {
-        StringBuilder all = new StringBuilder();
+        if (client.getConnection() == null) return;
 
-        try {
-            Object tab = client.gui.getTabList();
-            for (String fieldName : new String[]{"header", "footer"}) {
-                try {
-                    Field field = tab.getClass().getDeclaredField(fieldName);
-                    field.setAccessible(true);
-                    Object value = field.get(tab);
-                    if (value instanceof Component component) {
-                        all.append(component.getString()).append("\\n");
-                    }
-                } catch (ReflectiveOperationException ignored) {
-                }
+        StringBuilder all = new StringBuilder();
+        Collection<PlayerInfo> players = client.getConnection().getListedOnlinePlayers();
+
+        for (PlayerInfo info : players) {
+            Component display = info.getTabListDisplayName();
+            if (display != null) {
+                all.append(display.getString()).append('\n');
             }
-        } catch (Exception ignored) {
         }
 
-        if (client.getConnection() != null) {
-            Collection<PlayerInfo> players = client.getConnection().getListedOnlinePlayers();
-            for (PlayerInfo info : players) {
-                Component display = info.getTabListDisplayName();
-                if (display != null) all.append(display.getString()).append("\\n");
-            }
+        // Some tab entries can have no custom display name, so also include the profile name.
+        // This is mostly useful for keeping the scan robust when Hypixel changes formatting.
+        for (PlayerInfo info : players) {
+            all.append(info.getProfile().name()).append('\n');
         }
 
         parseTabText(all.toString());
@@ -75,44 +76,54 @@ public class PetOverlay {
 
     private void parseTabText(String raw) {
         if (raw == null || raw.isBlank()) return;
-        String text = raw.replace('\u00a7', '§');
-        String[] lines = text.split("\\R");
 
+        String[] lines = raw.split("\\R");
         boolean foundPet = false;
+        long tabXp = -1L;
+
         for (String original : lines) {
-            String line = stripFormatting(original).trim();
-            if (line.isEmpty()) continue;
+            String line = stripFormatting(original);
+            if (line.isBlank()) continue;
 
             Matcher xp = XP_PATTERN.matcher(line);
             if (xp.find()) {
-                long total = parseNumber(xp.group(1));
-                currentXp = total;
-                requiredXp = maxXpForRarity(petRarity);
-                overflowXp = Math.max(0L, total - requiredXp);
+                long parsed = parseNumber(xp.group(1));
+                if (parsed >= 0L) tabXp = parsed;
             }
 
             Matcher item = ITEM_PATTERN.matcher(line);
-            if (item.find()) petItem = item.group(1).trim();
+            if (item.find()) {
+                petItem = item.group(1).trim();
+            }
 
             int petIndex = indexOfIgnoreCase(line, "pet:");
             if (petIndex >= 0) {
                 String petText = line.substring(petIndex + 4).trim();
                 Matcher pet = PET_PATTERN.matcher(petText);
+
                 if (pet.matches()) {
-                    int level = Integer.parseInt(pet.group(1));
-                    String details = pet.group(2).trim();
-                    String rarity = findRarity(details);
-                    String name = removeRarity(details, rarity);
-                    if (!name.isBlank()) {
-                        setPet(name, rarity, level);
-                        foundPet = true;
+                    try {
+                        int level = Integer.parseInt(pet.group(1));
+                        String details = pet.group(2).trim();
+                        String rarity = findRarity(details);
+                        String name = removeRarity(details, rarity);
+
+                        if (!name.isBlank()) {
+                            setPet(name, rarity, level);
+                            foundPet = true;
+                        }
+                    } catch (NumberFormatException ignored) {
                     }
                 }
             }
         }
 
-        if (foundPet) {
-            requiredXp = maxXpForRarity(petRarity);
+        if (foundPet && tabXp >= 0L) {
+            currentXp = tabXp;
+            requiredXp = xpToMaxForCurrentLevel(petLevel, petRarity, petName);
+            overflowXp = Math.max(0L, currentXp - requiredXp);
+        } else if (foundPet) {
+            requiredXp = xpToMaxForCurrentLevel(petLevel, petRarity, petName);
             overflowXp = Math.max(0L, currentXp - requiredXp);
         }
     }
@@ -144,10 +155,31 @@ public class PetOverlay {
             if (v.endsWith("B")) return Math.round(Double.parseDouble(v.substring(0, v.length() - 1)) * 1_000_000_000D);
             if (v.endsWith("M")) return Math.round(Double.parseDouble(v.substring(0, v.length() - 1)) * 1_000_000D);
             if (v.endsWith("K")) return Math.round(Double.parseDouble(v.substring(0, v.length() - 1)) * 1_000D);
-            return Long.parseLong(v.replace(".", ""));
+            return Math.round(Double.parseDouble(v));
         } catch (NumberFormatException e) {
-            return 0L;
+            return -1L;
         }
+    }
+
+    /**
+     * The tab list gives us the pet's total accumulated XP. Overflow is the
+     * amount above the XP required to reach the displayed level.
+     *
+     * For normal pets, level 100 is the end of the normal progression.
+     * Golden Dragon is special and is allowed to progress to level 200.
+     */
+    private static long xpToMaxForCurrentLevel(int level, String rarity, String name) {
+        if (name.toLowerCase(Locale.ROOT).contains("golden dragon")) {
+            return goldenDragonXpAtLevel(Math.max(1, Math.min(200, level)));
+        }
+
+        if (level >= 100) return maxXpForRarity(rarity);
+        return xpToLevel100ForRarity(rarity);
+    }
+
+    private static long xpToLevel100ForRarity(String rarity) {
+        // Cumulative XP required to reach level 100 for normal pets.
+        return maxXpForRarity(rarity);
     }
 
     private static long maxXpForRarity(String rarity) {
@@ -159,6 +191,14 @@ public class PetOverlay {
             case "legendary", "mythic" -> 25_353_230L;
             default -> 25_353_230L;
         };
+    }
+
+    // Golden Dragon's exact level-200 table is handled conservatively here;
+    // the tab XP itself remains authoritative, so this never changes currentXp.
+    private static long goldenDragonXpAtLevel(int level) {
+        if (level >= 200) return 1_000_000_000L;
+        if (level >= 100) return 25_353_230L;
+        return Math.round(25_353_230D * level / 100D);
     }
 
     public void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
@@ -211,6 +251,7 @@ public class PetOverlay {
     }
 
     private int getOverlayWidth() { return config.showPetIcon ? 145 : 125; }
+
     private int getOverlayHeight() {
         int h = 18;
         if (config.showPetProgress) h += 8;
@@ -240,7 +281,16 @@ public class PetOverlay {
     }
 
     public void setPetItem(String item) { petItem = item == null ? "" : item; }
-    public void clearPet() { petName = "No Pet"; petRarity = ""; petLevel = 1; currentXp = 0; requiredXp = 0; overflowXp = 0; petItem = ""; }
+
+    public void clearPet() {
+        petName = "No Pet";
+        petRarity = "";
+        petLevel = 1;
+        currentXp = 0;
+        requiredXp = 25_353_230L;
+        overflowXp = 0;
+        petItem = "";
+    }
 
     public String getPetName() { return petName; }
     public String getPetRarity() { return petRarity; }
