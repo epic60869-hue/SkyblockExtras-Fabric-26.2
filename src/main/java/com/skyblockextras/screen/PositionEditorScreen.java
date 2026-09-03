@@ -2,7 +2,6 @@ package com.skyblockextras.screen;
 
 import com.skyblockextras.SkyblockExtrasClient;
 import com.skyblockextras.config.SbeConfig;
-
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -60,10 +59,8 @@ public class PositionEditorScreen extends Screen {
         g.fill(12, 12, 190, 40, 0xFF1E1F25);
         g.outline(12, 12, 178, 28, 0xFF44454E);
         g.text(font, "POSITION EDITOR", 22, 22, 0xFFE7E7EC, false);
-
-        g.text(font, "Drag/position controls for the Pet Overlay", 20, 56, 0xFFB4B5BE, false);
-        g.text(font, "X: " + c.petX + "   Y: " + c.petY + "   Scale: " + String.format("%.2f", c.petScale),
-                20, 72, 0xFFC276FF, false);
+        g.text(font, "Move and resize the Pet Overlay", 20, 56, 0xFFB4B5BE, false);
+        g.text(font, "X: " + c.petX + "   Y: " + c.petY + "   Scale: " + String.format("%.2f", c.petScale), 20, 72, 0xFFC276FF, false);
 
         int previewX = Math.max(10, Math.min(width - 230, c.petX));
         int previewY = Math.max(95, Math.min(height - 125, c.petY + 95));
@@ -74,9 +71,7 @@ public class PositionEditorScreen extends Screen {
         g.text(font, "PET OVERLAY", previewX + 12, previewY + 12, 0xFFE8D5F5, false);
         g.text(font, "[Lvl 100] Pet Name", previewX + 12, previewY + 30, 0xFFD5D5DC, false);
         g.text(font, "XP  12.3M / 20.0M", previewX + 12, previewY + 48, 0xFF9B9CA8, false);
-
-        g.text(font, "Use the controls below to move and resize the preview.",
-                20, height - 68, 0xFF8F909A, false);
+        g.text(font, "Use the controls below to move and resize the preview.", 20, height - 68, 0xFF8F909A, false);
     }
 
     private class EditorButton extends AbstractWidget {
@@ -90,8 +85,8 @@ public class PositionEditorScreen extends Screen {
             boolean hover = isHovered();
             g.fill(getX(), getY(), getX() + width, getY() + height, hover ? 0xFF292A31 : 0xFF222329);
             g.outline(getX(), getY(), width, height, hover ? 0xFFB86AF0 : 0xFF4A4B54);
-            int tw = font.width(getMessage());
-            g.text(font, getMessage(), getX() + (width - tw) / 2, getY() + 8, 0xFFE0E0E5, false);
+            int tw = PositionEditorScreen.this.font.width(getMessage());
+            g.text(PositionEditorScreen.this.font, getMessage(), getX() + (width - tw) / 2, getY() + 8, 0xFFE0E0E5, false);
         }
         @Override public void onClick(MouseButtonEvent event, boolean doubleClick) { action.run(); }
         @Override protected void updateWidgetNarration(NarrationElementOutput b) { defaultButtonNarrationText(b); }
