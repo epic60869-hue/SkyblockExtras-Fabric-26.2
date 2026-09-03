@@ -99,7 +99,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
     private static boolean isOwnChatMessage(GameProfile sender, Minecraft minecraft) {
         if (sender == null || minecraft.player == null) return false;
         try {
-            return sender.getId() != null && sender.getId().equals(minecraft.player.getUUID());
+            return sender.id() != null && sender.id().equals(minecraft.player.getUUID());
         } catch (Throwable ignored) {
             return false;
         }
