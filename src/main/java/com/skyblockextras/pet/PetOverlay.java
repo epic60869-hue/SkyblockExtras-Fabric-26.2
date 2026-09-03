@@ -93,7 +93,6 @@ public class PetOverlay {
         Collection<PlayerInfo> players = client.getConnection().getListedOnlinePlayers();
         PlayerInfo localInfo = null;
         StringBuilder localText = new StringBuilder();
-        StringBuilder fallbackText = new StringBuilder();
         UUID localUuid = client.player.getUUID();
         for (PlayerInfo info : players) {
             Component display = info.getTabListDisplayName();
@@ -103,16 +102,17 @@ public class PetOverlay {
                 localInfo = info;
                 localText.append(text).append('\n');
             }
-            fallbackText.append(text).append('\n');
         }
+
+        // Never parse another player's TAB entry as our pet. If Hypixel is not
+        // currently exposing the local Pet widget, keep the last known pet data
+        // (usually populated from the Pets menu) instead of overwriting it.
         if (localInfo != null) {
             String local = localText.toString();
             if (containsPetWidget(local)) {
                 parseTabText(local);
-                return;
             }
         }
-        parseTabText(fallbackText.toString());
     }
 
     private static boolean containsPetWidget(String text) {
