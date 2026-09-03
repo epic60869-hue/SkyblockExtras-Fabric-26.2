@@ -261,24 +261,33 @@ public class PetOverlay {
         pose.translate(config.petX, config.petY);
         pose.scale(scale, scale);
 
-        int textX = 0;
-        if (config.showPetIcon) {
-            graphics.item(petIcon(), 0, 0);
-            textX = 20;
+        int textX = config.showPetIcon ? 20 : 0;
+        int contentHeight = 12;
+        if (config.showPetProgress) contentHeight += 10;
+        if (config.showPetXp) contentHeight += 10;
+        if (config.showOverflowXp && overflowLevel > petLevel) contentHeight += 10;
+        if (config.showPetItem && !petItem.isBlank()) contentHeight += 10;
+
+        // Compact optional card. Unlike the old version there is no XP bar or long line.
+        if (config.petBackgroundEnabled) {
+            int contentWidth = getOverlayWidth();
+            graphics.fill(textX - 4, -3, contentWidth, contentHeight + 3, 0xB9101117);
+            graphics.outline(textX - 4, -3, contentWidth, contentHeight + 3, 0xFF41434E);
+            graphics.fill(textX - 4, -3, textX - 1, contentHeight + 3, rarityColor());
         }
 
         int y = 0;
 
-        // Compact Skysoft-style layout: icon + name, then percentage, XP and item.
-        if (config.showPetLevel || !petName.isBlank()) {
-            StringBuilder name = new StringBuilder();
-            if (config.showPetLevel) name.append("[Lvl ").append(petLevel).append("] ");
-            name.append(petName);
-
-            int nameColor = petRarity.isBlank() ? 0xFFFFFFFF : rarityColor();
-            graphics.text(client.font, Component.literal(name.toString()), textX, y, nameColor, true);
-            y += 12;
+        if (config.showPetIcon) {
+            graphics.item(petIcon(), 0, 0);
         }
+
+        StringBuilder name = new StringBuilder();
+        if (config.showPetLevel) name.append("[Lvl ").append(petLevel).append("] ");
+        name.append(petName);
+        int nameColor = petRarity.isBlank() ? 0xFFFFFFFF : rarityColor();
+        graphics.text(client.font, Component.literal(name.toString()), textX, y, nameColor, true);
+        y += 12;
 
         if (config.showPetProgress) {
             graphics.text(client.font, Component.literal("Level Progress: " + formatPercent(levelProgress())), textX, y, 0xFF55FFFF, false);
@@ -297,19 +306,6 @@ public class PetOverlay {
 
         if (config.showPetItem && !petItem.isBlank()) {
             graphics.text(client.font, Component.literal("Pet Item: " + petItem), textX, y, 0xFFAA55FF, false);
-            y += 10;
-        }
-
-        // Keep the background optional, but only around the compact content.
-        // No XP bar or long horizontal line is drawn anymore.
-        if (config.petBackgroundEnabled) {
-            int contentWidth = getOverlayWidth();
-            int contentHeight = Math.max(12, y);
-            // Background is rendered behind the content by the extractor's layering
-            // order in the HUD pass; use a subtle compact card matching the old toggle.
-            graphics.fill(textX - 4, -3, contentWidth, contentHeight + 3, 0xB9101117);
-            graphics.outline(textX - 4, -3, contentWidth, contentHeight + 3, 0xFF41434E);
-            graphics.fill(textX - 4, -3, textX - 1, contentHeight + 3, rarityColor());
         }
 
         pose.popMatrix();
@@ -345,10 +341,10 @@ public class PetOverlay {
     }
 
     private int getOverlayWidth() {
-        int base = config.showPetIcon ? 20 : 0;
-        base += 150;
-        if (petItem.length() > 20) base += Math.min(80, (petItem.length() - 20) * 3);
-        return base;
+        int width = config.showPetIcon ? 20 : 0;
+        width += 155;
+        if (petItem.length() > 20) width += Math.min(100, (petItem.length() - 20) * 3);
+        return width;
     }
 
     private String formatPercent(float percent) {
