@@ -2,6 +2,7 @@ package com.skyblockextras;
 
 import com.skyblockextras.config.SbeConfig;
 import com.skyblockextras.pet.PetOverlay;
+import com.skyblockextras.rng.DiscordWebhook;
 import com.skyblockextras.rng.RngDropOverlay;
 import com.skyblockextras.rng.RngTracker;
 import com.skyblockextras.screen.SbeSkyHanniScreen;
@@ -26,6 +27,10 @@ public class SkyblockExtrasClient implements ClientModInitializer {
     public static RngTracker RNG;
     public static PetOverlay PET;
     public static RngDropOverlay RNG_DROP_OVERLAY;
+    public static DiscordWebhook DISCORD_WEBHOOK;
+
+    // Created exactly once per Minecraft process, so /sbe reload does not reset the session timer.
+    public static final long SESSION_START = System.currentTimeMillis();
 
     @Override
     public void onInitializeClient() {
@@ -33,6 +38,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
         RNG = new RngTracker(CONFIG);
         PET = new PetOverlay(CONFIG);
         RNG_DROP_OVERLAY = new RngDropOverlay(CONFIG);
+        DISCORD_WEBHOOK = new DiscordWebhook(CONFIG, SESSION_START);
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> {
             System.out.println("[SBE] Client command dispatcher initialized.");
@@ -47,14 +53,13 @@ public class SkyblockExtrasClient implements ClientModInitializer {
                                         RNG = new RngTracker(CONFIG);
                                         PET = new PetOverlay(CONFIG);
                                         RNG_DROP_OVERLAY = new RngDropOverlay(CONFIG);
+                                        DISCORD_WEBHOOK = new DiscordWebhook(CONFIG, SESSION_START);
                                         context.getSource().sendFeedback(Component.literal("[SBE] Configuration reloaded."));
                                         return 1;
                                     }))
             );
         });
 
-        // Hypixel RNG announcements are handled from GAME/system messages only.
-        // This avoids counting the same announcement again through CHAT.
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
             if (message == null || overlay) return;
             Minecraft minecraft = Minecraft.getInstance();
