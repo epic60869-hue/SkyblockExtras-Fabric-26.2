@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Center-screen RNG announcement inspired by modern SkyBlock HUD layouts. */
+/** Clean center-screen RNG announcement overlay. */
 public class RngDropOverlay {
     private final SbeConfig config;
     private final PriceService prices = new PriceService();
@@ -51,29 +51,33 @@ public class RngDropOverlay {
 
         Minecraft client = Minecraft.getInstance();
         float scale = Math.max(0.5f, Math.min(3.0f, config.rngDropOverlayScale));
-
+        String priceText = "(" + price + ")";
         int itemWidth = client.font.width(item);
-        int priceWidth = client.font.width("(" + price + ")");
-        int width = Math.max(170, Math.max(itemWidth, priceWidth) + 44);
-        int height = 72;
-        int x = config.rngDropOverlayX < 0 ? (client.getWindow().getGuiScaledWidth() - Math.round(width * scale)) / 2 : config.rngDropOverlayX;
-        int y = config.rngDropOverlayY < 0 ? (client.getWindow().getGuiScaledHeight() - Math.round(height * scale)) / 2 : config.rngDropOverlayY;
+        int priceWidth = client.font.width(priceText);
+        int width = Math.max(190, Math.max(itemWidth, priceWidth) + 50);
+        int height = 70;
+        int scaledWidth = Math.round(width * scale);
+        int scaledHeight = Math.round(height * scale);
+        int screenWidth = client.getWindow().getGuiScaledWidth();
+        int screenHeight = client.getWindow().getGuiScaledHeight();
+        int x = config.rngDropOverlayX < 0 ? (screenWidth - scaledWidth) / 2 : config.rngDropOverlayX;
+        int y = config.rngDropOverlayY < 0 ? (screenHeight - scaledHeight) / 2 : config.rngDropOverlayY;
 
         var pose = graphics.pose();
         pose.pushMatrix();
         pose.translate(x, y);
         pose.scale(scale, scale);
 
-        graphics.fill(0, 0, width, height, 0xE6101117);
-        graphics.outline(0, 0, width, height, 0xFF4A4B55);
-        graphics.fill(1, 1, width - 1, 3, 0xFFB96BFF);
+        if (config.rngDropOverlayBackgroundEnabled) {
+            graphics.fill(0, 0, width, height, 0xE6111218);
+            graphics.outline(0, 0, width, height, 0xFF41434E);
+            graphics.fill(1, 1, width - 1, 3, 0xFFB96BFF);
+        }
 
         String title = "RNG DROP!";
-        graphics.text(client.font, Component.literal(title), (width - client.font.width(title)) / 2, 12, 0xFFC77DFF, true);
-        graphics.text(client.font, Component.literal(item), (width - itemWidth) / 2, 30, 0xFFFFFFFF, true);
-        String priceText = "(" + price + ")";
-        graphics.text(client.font, Component.literal(priceText), (width - priceWidth) / 2, 48, 0xFFFFD45A, true);
-
+        graphics.text(client.font, Component.literal(title), (width - client.font.width(title)) / 2, 10, 0xFFC77DFF, true);
+        graphics.text(client.font, Component.literal(item), (width - itemWidth) / 2, 29, 0xFFFFFFFF, true);
+        graphics.text(client.font, Component.literal(priceText), (width - priceWidth) / 2, 47, 0xFFFFD45A, true);
         pose.popMatrix();
     }
 
@@ -84,7 +88,7 @@ public class RngDropOverlay {
     public String getItem() { return item; }
     public String getPrice() { return price; }
 
-    private static final class PriceService {
+    private final class PriceService {
         private final HttpClient client = HttpClient.newBuilder().build();
         private final AtomicLong resourceRefresh = new AtomicLong(0L);
         private volatile String resourceItems = "";
@@ -135,18 +139,17 @@ public class RngDropOverlay {
                     .exceptionally(e -> "");
         }
 
-        private static String findItemId(String name, String json) {
+        private String findItemId(String name, String json) {
             if (json == null || json.isBlank()) return null;
             String target = normalize(name);
             Pattern p = Pattern.compile("\\\"id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"[\\s\\S]{0,500}\\\"name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
             Matcher m = p.matcher(json);
-            while (m.find()) {
-                if (normalize(m.group(2)).equals(target)) return m.group(1);
-            }
+            while (m.find()) if (normalize(m.group(2)).equals(target)) return m.group(1);
             return null;
         }
 
-        private static String parseBazaar(String json, String id) {
+        private String parseBazaar(String json, String id) {
+            if (json == null || json.isBlank()) return null;
             String needle = "\"" + id + "\"";
             int at = json.indexOf(needle);
             if (at < 0) return null;
@@ -157,7 +160,7 @@ public class RngDropOverlay {
             return formatPrice(Double.parseDouble(m.group(1)));
         }
 
-        private static String parseLowestBin(String json, String displayName) {
+        private String parseLowestBin(String json, String displayName) {
             if (json == null || json.isBlank()) return "Price unavailable";
             String target = normalize(displayName);
             Matcher m = Pattern.compile("\\\"item_name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"[\\s\\S]{0,500}\\\"bin\\\"\\s*:\\s*(true|false)[\\s\\S]{0,300}\\\"starting_bid\\\"\\s*:\\s*(\\d+)").matcher(json);
@@ -170,15 +173,23 @@ public class RngDropOverlay {
             return lowest == Long.MAX_VALUE ? "Price unavailable" : formatPrice(lowest);
         }
 
-        private static String normalize(String value) {
+        private String normalize(String value) {
             return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
         }
 
-        private static String formatPrice(double value) {
-            if (value >= 1_000_000_000) return String.format(Locale.ROOT, "%.2fB coins", value / 1_000_000_000D);
-            if (value >= 1_000_000) return String.format(Locale.ROOT, "%.2fM coins", value / 1_000_000D);
-            if (value >= 1_000) return String.format(Locale.ROOT, "%.2fK coins", value / 1_000D);
-            return String.format(Locale.ROOT, "%,.0f coins", value);
+        private String formatPrice(double value) {
+            return switch (config.rngDropPriceFormat == null ? "SHORT" : config.rngDropPriceFormat.toUpperCase(Locale.ROOT)) {
+                case "FULL" -> String.format(Locale.ROOT, "%,.0f", value);
+                case "COINS" -> String.format(Locale.ROOT, "%.2fM coins", value / 1_000_000D);
+                default -> compact(value);
+            };
+        }
+
+        private String compact(double value) {
+            if (value >= 1_000_000_000) return String.format(Locale.ROOT, "%.2fB", value / 1_000_000_000D);
+            if (value >= 1_000_000) return String.format(Locale.ROOT, "%.2fM", value / 1_000_000D);
+            if (value >= 1_000) return String.format(Locale.ROOT, "%.2fK", value / 1_000D);
+            return String.format(Locale.ROOT, "%,.0f", value);
         }
     }
 }
