@@ -26,7 +26,9 @@ import net.minecraft.world.item.component.ResolvableProfile;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -45,6 +47,9 @@ public class PetOverlay {
     private String petItem = "";
     private ItemStack resolvedPetIcon = ItemStack.EMPTY;
     private String resolvedIconKey = "";
+
+    /** Runtime cache: each pet keeps its last known held item and real profile icon. */
+    private final Map<String, PetCache> petCache = new HashMap<>();
 
     private static final Pattern PET_PATTERN = Pattern.compile("(?i)\\[?lvl\\s*(\\d+)\\]?\\s+(?:(\\d+)\\s*[♦◆✦])?\\s*(.+)");
     private static final Pattern PET_XP_LINE = Pattern.compile("(?i)([0-9,.]+(?:[kmb])?)\\s*/\\s*([0-9,.]+(?:[kmb])?)\\s*XP(?:\\s*\\(([0-9,.]+)%\\))?");
@@ -80,15 +85,8 @@ public class PetOverlay {
 
     public void tick(Minecraft client) {
         if (!config.petOverlayEnabled || client == null || client.player == null) return;
-        String oldPetKey = petName + "|" + petLevel + "|" + petRarity;
         readHypixelTab(client);
-        String tabPetKey = petName + "|" + petLevel + "|" + petRarity;
-        if (!tabPetKey.equals(oldPetKey)) { resolvedPetIcon = ItemStack.EMPTY; resolvedIconKey = ""; }
         readOpenedPetsMenu(client);
-        if (!resolvedIconKey.startsWith("menu-profile:")) {
-            String menuPetKey = petName + "|" + petLevel + "|" + petRarity;
-            if (!menuPetKey.equals(tabPetKey)) { resolvedPetIcon = ItemStack.EMPTY; resolvedIconKey = ""; }
-        }
         resolveRealPetIcon(client);
     }
 
@@ -103,44 +101,105 @@ public class PetOverlay {
         parseTabText(all.toString());
     }
 
+    /** Prefer the actual local "Pet:" section so another player's pet cannot overwrite it. */
     private void parseTabText(String raw) {
         if (raw == null || raw.isBlank()) return;
-        boolean foundPet = false;
+        String[] lines = raw.split("\\R");
+
+        int petHeader = -1;
+        for (int i = 0; i < lines.length; i++) {
+            String line = stripFormatting(lines[i]);
+            if (line.equalsIgnoreCase("Pet:") || line.toLowerCase(Locale.ROOT).startsWith("pet:")) {
+                petHeader = i;
+                break;
+            }
+        }
+
+        if (petHeader >= 0) {
+            String inline = stripFormatting(lines[petHeader]);
+            String afterHeader = inline.length() > 4 ? inline.substring(4).trim() : "";
+            if (!afterHeader.isBlank()) {
+                ParsedPet parsed = parsePetLine(afterHeader);
+                if (parsed != null) applyTabPet(parsed, lines, petHeader + 1);
+            } else {
+                for (int i = petHeader + 1; i < Math.min(lines.length, petHeader + 5); i++) {
+                    String line = stripFormatting(lines[i]);
+                    if (line.isBlank()) continue;
+                    ParsedPet parsed = parsePetLine(line);
+                    if (parsed != null) {
+                        applyTabPet(parsed, lines, i + 1);
+                        return;
+                    }
+                }
+            }
+            return;
+        }
+
+        // Fallback for servers/modpacks that omit the Pet: header.
+        for (String line : lines) {
+            ParsedPet parsed = parsePetLine(stripFormatting(line));
+            if (parsed != null) {
+                applyTabPet(parsed, lines, 0);
+                return;
+            }
+        }
+    }
+
+    private ParsedPet parsePetLine(String line) {
+        if (line == null || line.isBlank()) return null;
+        Matcher pet = PET_PATTERN.matcher(line);
+        if (!pet.find()) return null;
+        try {
+            int level = Integer.parseInt(pet.group(1));
+            String details = pet.group(3).trim();
+            String name = findPetName(details);
+            if (name == null) return null;
+            return new ParsedPet(name, findRarity(details), level);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private void applyTabPet(ParsedPet parsed, String[] lines, int startIndex) {
+        setPet(parsed.name, parsed.rarity, parsed.level);
         long localXp = -1L;
         float progress = -1.0f;
         String parsedItem = "";
-        for (String original : raw.split("\\R")) {
-            String line = stripFormatting(original);
+        for (int i = startIndex; i < Math.min(lines.length, startIndex + 4); i++) {
+            String line = stripFormatting(lines[i]);
             if (line.isBlank()) continue;
             Matcher xp = PET_XP_LINE.matcher(line);
             if (xp.find()) {
                 localXp = parseNumber(xp.group(1));
                 if (xp.group(3) != null) progress = parsePercent(xp.group(3));
+                continue;
             }
             Matcher labelXp = PET_LABEL_XP.matcher(line);
-            if (labelXp.find()) localXp = parseNumber(labelXp.group(1));
+            if (labelXp.find()) {
+                localXp = parseNumber(labelXp.group(1));
+                continue;
+            }
             Matcher item = ITEM_PATTERN.matcher(line);
             if (item.find()) parsedItem = item.group(1).replaceAll("\\s+", " ").trim();
-            Matcher pet = PET_PATTERN.matcher(line);
-            if (pet.find()) {
-                try {
-                    int level = Integer.parseInt(pet.group(1));
-                    String details = pet.group(3).trim();
-                    String name = findPetName(details);
-                    if (name != null) {
-                        setPet(name, findRarity(details), level);
-                        foundPet = true;
-                    }
-                } catch (NumberFormatException ignored) { }
-            }
         }
-        if (!foundPet) return;
+
+        PetCache cached = petCache.get(cacheKey(petName));
         if (!parsedItem.isBlank()) petItem = parsedItem;
-        if (localXp >= 0) currentXp = calculateTotalXp(petLevel, localXp, petRarity);
+        else if (cached != null && !cached.petItem.isBlank()) petItem = cached.petItem;
+
+        if (localXp >= 0) {
+            long calculated = calculateTotalXp(petLevel, localXp, petRarity);
+            currentXp = calculated;
+            if (cached != null && cached.menuTotalXp >= 0 && cached.menuTotalXp > currentXp && cached.menuTotalXp - currentXp <= OVERFLOW_XP_PER_LEVEL * 2L) {
+                currentXp = cached.menuTotalXp;
+            }
+        } else if (cached != null && cached.menuTotalXp >= 0) {
+            currentXp = cached.menuTotalXp;
+        }
         if (progress >= 0) tabProgress = progress;
     }
 
-    /** Reads the active pet from the Pets menu. This updates the held item whenever the menu is opened. */
+    /** Reads the active pet from the Pets menu and caches its item/icon per pet. */
     private void readOpenedPetsMenu(Minecraft client) {
         if (!(client.gui.screen() instanceof AbstractContainerScreen<?> screen)) return;
         String title = stripFormatting(screen.getTitle().getString());
@@ -160,7 +219,14 @@ public class PetOverlay {
             if (held.isBlank()) held = info.heldItem;
             if (held != null && !held.isBlank()) petItem = stripFormatting(held).trim();
 
+            PetCache cached = petCache.computeIfAbsent(cacheKey(menuPet), k -> new PetCache());
+            if (!petItem.isBlank()) cached.petItem = petItem;
+            if (info.experience >= 0.0D) cached.menuTotalXp = (long) info.experience;
+            cached.rarity = petRarity;
+            cached.level = petLevel;
+
             if (stack.get(DataComponents.PROFILE) != null) {
+                cached.icon = stack.copy();
                 resolvedPetIcon = stack.copy();
                 resolvedIconKey = "menu-profile:" + menuPet;
             }
@@ -204,20 +270,28 @@ public class PetOverlay {
         return "";
     }
 
-    /** Resolve a real SkyBlock pet head. */
+    /** Resolve a real SkyBlock pet head, preferring the per-pet cache. */
     private void resolveRealPetIcon(Minecraft client) {
         if (client.level == null || client.player == null || petName.equals("No Pet")) return;
-        if (!resolvedPetIcon.isEmpty() && resolvedIconKey.startsWith("menu-profile:")) return;
+
+        PetCache cached = petCache.get(cacheKey(petName));
+        if (cached != null && !cached.icon.isEmpty()) {
+            resolvedPetIcon = cached.icon.copy();
+            resolvedIconKey = "cache:" + cacheKey(petName);
+            return;
+        }
 
         if (petName.equalsIgnoreCase("Rose Dragon")) {
             ItemStack rose = createTexturedHead(ROSE_DRAGON_TEXTURE, "Rose Dragon");
             if (!rose.isEmpty()) {
                 resolvedPetIcon = rose;
                 resolvedIconKey = "profile:rose_dragon";
+                petCache.computeIfAbsent(cacheKey(petName), k -> new PetCache()).icon = rose.copy();
                 return;
             }
         }
 
+        // Dynamic fallback for pets whose real player-head is currently rendered.
         LivingEntity namedAnchor = null;
         double anchorDistance = Double.MAX_VALUE;
         for (Entity entity : client.level.entitiesForRendering()) {
@@ -231,12 +305,12 @@ public class PetOverlay {
             if (name.contains("slug") && !petName.equalsIgnoreCase("Slug")) continue;
             if (distance < anchorDistance) { anchorDistance = distance; namedAnchor = living; }
         }
-
         if (namedAnchor != null) {
             ItemStack anchored = findHeadNear(client, namedAnchor, 3.0D);
             if (!anchored.isEmpty()) {
+                cacheIcon(anchored);
                 resolvedPetIcon = anchored;
-                resolvedIconKey = petName + "|anchor|" + anchored.hashCode();
+                resolvedIconKey = "anchor:" + cacheKey(petName);
                 return;
             }
         }
@@ -254,7 +328,7 @@ public class PetOverlay {
             if (!isUsablePetHead(head)) continue;
             double distanceSq = entity.distanceToSqr(client.player);
             if (distanceSq > maxDistance * maxDistance) continue;
-            double score = 0.0D;
+            double score = -distanceSq * 2.0D;
             if (entity instanceof LivingEntity living && living.getCustomName() != null) {
                 String custom = stripFormatting(living.getCustomName().getString()).toLowerCase(Locale.ROOT);
                 if (custom.contains(petName.toLowerCase(Locale.ROOT))) score += 2500.0D;
@@ -272,13 +346,18 @@ public class PetOverlay {
                 if (stand.isMarker()) score += 350.0D;
                 if (stand.isSmall()) score += 150.0D;
             }
-            score -= distanceSq * 2.0D;
             if (score > bestScore) { bestScore = score; bestEntity = entity; bestStack = head.copy(); }
         }
         if (bestEntity != null && !bestStack.isEmpty()) {
+            cacheIcon(bestStack);
             resolvedPetIcon = bestStack;
-            resolvedIconKey = petName + "|" + petLevel + "|" + bestEntity.getId();
+            resolvedIconKey = "entity:" + cacheKey(petName);
         }
+    }
+
+    private void cacheIcon(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return;
+        petCache.computeIfAbsent(cacheKey(petName), k -> new PetCache()).icon = stack.copy();
     }
 
     private ItemStack createTexturedHead(String textureValue, String name) {
@@ -317,13 +396,12 @@ public class PetOverlay {
         return best;
     }
 
-    private static boolean isUsablePetHead(ItemStack stack) { return !stack.isEmpty() && stack.getItem() == Items.PLAYER_HEAD; }
+    private static boolean isUsablePetHead(ItemStack stack) {
+        return !stack.isEmpty() && stack.getItem() == Items.PLAYER_HEAD && stack.get(DataComponents.PROFILE) != null;
+    }
 
     private long calculateTotalXp(int level, long localXp, String rarity) {
-        if (petName.toLowerCase(Locale.ROOT).contains("dragon")) {
-            if (level <= 100) return calculateNormalPetTotalXp(level, localXp, rarity);
-            return LEGENDARY_LEVEL_100_XP + (long) (level - 100) * OVERFLOW_XP_PER_LEVEL + Math.max(0L, localXp);
-        }
+        if (level > 100) return LEGENDARY_LEVEL_100_XP + (long) (level - 100) * OVERFLOW_XP_PER_LEVEL + Math.max(0L, localXp);
         return calculateNormalPetTotalXp(level, localXp, rarity);
     }
 
@@ -331,13 +409,13 @@ public class PetOverlay {
         if (level <= 1) return Math.max(0L, localXp);
         long total = 0L;
         int completed = Math.min(level - 1, 99);
-        for (int i = 0; i < completed; i++) total += getXpForLevel(i, rarity);
+        int offset = getRarityOffset(rarity);
+        for (int i = 0; i < completed; i++) {
+            int index = offset + i;
+            if (index >= PET_XP.length) break;
+            total += PET_XP[index];
+        }
         return total + Math.max(0L, localXp);
-    }
-
-    private static long getXpForLevel(int level, String rarity) {
-        int offset = getRarityOffset(rarity) + Math.max(0, level);
-        return offset < PET_XP.length ? PET_XP[offset] : OVERFLOW_XP_PER_LEVEL;
     }
 
     private static int getRarityOffset(String rarity) {
@@ -350,7 +428,6 @@ public class PetOverlay {
         };
     }
 
-    /** Nopo-style overflow mapping: rarity curve to legendary 100, then 1,886,700 XP per overflow level. */
     private static int calculateLevelFromTotalXp(long totalXp, String rarity, String type) {
         if (totalXp < LEGENDARY_LEVEL_100_XP) {
             long spent = 0L;
@@ -397,10 +474,10 @@ public class PetOverlay {
         y += 12;
 
         if (showXpLine) {
-            graphics.text(client.font, Component.literal("Pet XP: " + formatNumber(currentXp) + " - " + formatPercent(levelProgress())), textX, y, 0xFF55FFFF, false);
+            graphics.text(client.font, Component.literal("Pet XP: " + formatNumber(currentXp) + " - " + formatPercent(levelProgress())), textX, y, 0xFF55FFFF, true);
             y += 10;
         }
-        if (config.showPetItem && !petItem.isBlank()) graphics.text(client.font, Component.literal("Pet Item: " + petItem), textX, y, 0xFFAA55FF, false);
+        if (config.showPetItem && !petItem.isBlank()) graphics.text(client.font, Component.literal("Pet Item: " + petItem), textX, y, 0xFFAA55FF, true);
         pose.popMatrix();
     }
 
@@ -462,10 +539,27 @@ public class PetOverlay {
     private static float parsePercent(String value) { try { return Float.parseFloat(value.replace(",", "")); } catch (NumberFormatException e) { return -1.0f; } }
 
     private void setPet(String name, String rarity, int level) {
+        if (name == null || name.isBlank()) return;
+        boolean changed = !name.equalsIgnoreCase(petName);
         petName = name;
         if (rarity != null && !rarity.isBlank()) petRarity = rarity;
         petLevel = Math.max(1, Math.min(200, level));
+
+        PetCache cached = petCache.get(cacheKey(name));
+        if (cached != null) {
+            if (!cached.petItem.isBlank()) petItem = cached.petItem;
+            if (!cached.icon.isEmpty()) {
+                resolvedPetIcon = cached.icon.copy();
+                resolvedIconKey = "cache:" + cacheKey(name);
+            }
+            if (cached.menuTotalXp >= 0 && (changed || currentXp <= 0)) currentXp = cached.menuTotalXp;
+        } else if (changed) {
+            resolvedPetIcon = ItemStack.EMPTY;
+            resolvedIconKey = "";
+        }
     }
+
+    private static String cacheKey(String name) { return name == null ? "" : name.toLowerCase(Locale.ROOT).trim(); }
 
     private int rarityColor() {
         return switch (petRarity.toLowerCase(Locale.ROOT)) {
@@ -479,5 +573,14 @@ public class PetOverlay {
         };
     }
 
+    private record ParsedPet(String name, String rarity, int level) {}
     private record PetMenuInfo(String type, String rarity, boolean active, String heldItem, double experience, int level) {}
+
+    private static final class PetCache {
+        private ItemStack icon = ItemStack.EMPTY;
+        private String petItem = "";
+        private long menuTotalXp = -1L;
+        private String rarity = "";
+        private int level = 1;
+    }
 }
