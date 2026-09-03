@@ -16,6 +16,7 @@ public class SbeConfig {
     public boolean dyesEnabled = true;
 
     public boolean petOverlayEnabled = true;
+    public boolean petBackgroundEnabled = true;
     public boolean showPetIcon = true;
     public boolean showPetLevel = true;
     public boolean showPetProgress = true;
@@ -28,6 +29,7 @@ public class SbeConfig {
 
     // RNG drop announcement overlay settings.
     public boolean rngDropOverlayEnabled = true;
+    public boolean rngDropOverlayBackgroundEnabled = true;
     public float rngDropOverlayScale = 1.0f;
     public int rngDropOverlayX = -1;
     public int rngDropOverlayY = -1;
