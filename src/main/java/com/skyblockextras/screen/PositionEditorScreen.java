@@ -4,201 +4,115 @@ import com.skyblockextras.SkyblockExtrasClient;
 import com.skyblockextras.config.SbeConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
-/** Drag-and-drop position/scale editor for the pet overlay. */
+/** Unified drag-and-drop editor for all SBE HUD overlays. */
 public class PositionEditorScreen extends Screen {
+    private enum Element { PET, RNG }
     private final Screen parent;
+    private Element selected;
     private boolean dragging;
-    private double dragOffsetX;
-    private double dragOffsetY;
+    private double dragOffsetX, dragOffsetY;
 
-    public PositionEditorScreen(Screen parent) {
-        super(Component.literal("Skyblock Extras Position Editor"));
-        this.parent = parent;
+    public PositionEditorScreen(Screen parent) { super(Component.literal("Skyblock Extras Position Editor")); this.parent = parent; }
+
+    private SbeConfig config() { return SkyblockExtrasClient.CONFIG; }
+
+    private int petW() { return Math.max(190, Math.round(190 * clamp(config().petScale, .5f, 3f))); }
+    private int petH() { return Math.max(72, Math.round(72 * clamp(config().petScale, .5f, 3f))); }
+    private int rngW() { return Math.max(240, Math.round(300 * clamp(config().rngDropOverlayScale, .5f, 3f))); }
+    private int rngH() { return Math.round(82 * clamp(config().rngDropOverlayScale, .5f, 3f)); }
+    private static float clamp(float v,float min,float max){return Math.max(min,Math.min(max,v));}
+
+    private int x(Element e) {
+        if(e==Element.PET)return Math.max(0,Math.min(width-petW(),config().petX));
+        int w=rngW(); return config().rngDropOverlayX<0?(width-w)/2:Math.max(0,Math.min(width-w,config().rngDropOverlayX));
+    }
+    private int y(Element e) {
+        if(e==Element.PET)return Math.max(0,Math.min(height-petH(),config().petY));
+        int h=rngH(); return config().rngDropOverlayY<0?(height-h)/2:Math.max(0,Math.min(height-h,config().rngDropOverlayY));
+    }
+    private int w(Element e){return e==Element.PET?petW():rngW();}
+    private int h(Element e){return e==Element.PET?petH():rngH();}
+
+    private Element elementAt(double mx,double my){
+        Element[] order=selected==null?new Element[]{Element.PET,Element.RNG}:new Element[]{selected,selected==Element.PET?Element.RNG:Element.PET};
+        for(Element e:order){int ex=x(e),ey=y(e);if(mx>=ex&&mx<=ex+w(e)&&my>=ey&&my<=ey+h(e))return e;}
+        return null;
     }
 
-    @Override
-    protected void init() {
-        super.init();
-        addRenderableWidget(new EditorButton(14, 14, 70, 25, "BACK", this::onClose));
-    }
-
-    private int previewX() {
-        SbeConfig c = SkyblockExtrasClient.CONFIG;
-        int previewW = previewWidth();
-        return Math.max(0, Math.min(width - previewW, c.petX));
-    }
-
-    private int previewY() {
-        SbeConfig c = SkyblockExtrasClient.CONFIG;
-        int previewH = previewHeight();
-        return Math.max(0, Math.min(height - previewH, c.petY));
-    }
-
-    private int previewWidth() {
-        return Math.max(190, Math.round(190 * SkyblockExtrasClient.CONFIG.petScale));
-    }
-
-    private int previewHeight() {
-        return Math.max(72, Math.round(72 * SkyblockExtrasClient.CONFIG.petScale));
-    }
-
-    private void clampPosition() {
-        SbeConfig c = SkyblockExtrasClient.CONFIG;
-        int maxX = Math.max(0, width - previewWidth());
-        int maxY = Math.max(0, height - previewHeight());
-        c.petX = Math.max(0, Math.min(maxX, c.petX));
-        c.petY = Math.max(0, Math.min(maxY, c.petY));
-    }
-
-    @Override
-    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 0) {
-            int px = previewX();
-            int py = previewY();
-            int pw = previewWidth();
-            int ph = previewHeight();
-
-            if (event.x() >= px && event.x() <= px + pw
-                    && event.y() >= py && event.y() <= py + ph) {
-                dragging = true;
-                dragOffsetX = event.x() - px;
-                dragOffsetY = event.y() - py;
-                return true;
-            }
+    @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick){
+        if(event.button()!=0)return super.mouseClicked(event,doubleClick);
+        Element hit=elementAt(event.x(),event.y());
+        if(hit!=null){
+            if(doubleClick||selected==null||selected!=hit)selected=hit;
+            dragging=true;dragOffsetX=event.x()-x(hit);dragOffsetY=event.y()-y(hit);return true;
         }
-        return super.mouseClicked(event, doubleClick);
+        return super.mouseClicked(event,doubleClick);
     }
 
-    @Override
-    public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
-        if (dragging && event.button() == 0) {
-            SbeConfig c = SkyblockExtrasClient.CONFIG;
-            int newX = (int) Math.round(event.x() - dragOffsetX);
-            int newY = (int) Math.round(event.y() - dragOffsetY);
-
-            int maxX = Math.max(0, width - previewWidth());
-            int maxY = Math.max(0, height - previewHeight());
-
-            c.petX = Math.max(0, Math.min(maxX, newX));
-            c.petY = Math.max(0, Math.min(maxY, newY));
-            c.save();
-            return true;
-        }
-        return super.mouseDragged(event, deltaX, deltaY);
+    @Override public boolean mouseDragged(MouseButtonEvent event,double dx,double dy){
+        if(!dragging||selected==null||event.button()!=0)return super.mouseDragged(event,dx,dy);
+        int nx=(int)Math.round(event.x()-dragOffsetX),ny=(int)Math.round(event.y()-dragOffsetY);
+        if(selected==Element.PET){config().petX=Math.max(0,Math.min(width-petW(),nx));config().petY=Math.max(0,Math.min(height-petH(),ny));}
+        else {config().rngDropOverlayX=Math.max(0,Math.min(width-rngW(),nx));config().rngDropOverlayY=Math.max(0,Math.min(height-rngH(),ny));}
+        config().save();return true;
     }
 
-    @Override
-    public boolean mouseReleased(MouseButtonEvent event) {
-        if (event.button() == 0 && dragging) {
-            dragging = false;
-            SkyblockExtrasClient.CONFIG.save();
-            return true;
-        }
-        return super.mouseReleased(event);
+    @Override public boolean mouseReleased(MouseButtonEvent event){if(event.button()==0&&dragging){dragging=false;config().save();return true;}return super.mouseReleased(event);}
+
+    @Override public boolean mouseScrolled(double mouseX,double mouseY,double horizontalAmount,double verticalAmount){
+        Element hit=elementAt(mouseX,mouseY);if(hit==null||verticalAmount==0)return super.mouseScrolled(mouseX,mouseY,horizontalAmount,verticalAmount);
+        float step=verticalAmount>0?.10f:-.10f;
+        if(hit==Element.PET)config().petScale=clamp(config().petScale+step,.5f,3f);
+        else config().rngDropOverlayScale=clamp(config().rngDropOverlayScale+step,.5f,3f);
+        selected=hit;config().save();return true;
     }
 
-    @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        int px = previewX();
-        int py = previewY();
-        int pw = previewWidth();
-        int ph = previewHeight();
+    @Override public void extractRenderState(GuiGraphicsExtractor g,int mouseX,int mouseY,float delta){
+        super.extractRenderState(g,mouseX,mouseY,delta);
+        g.fill(0,0,width,height,0xB20A0A0D);
 
-        if (mouseX >= px && mouseX <= px + pw
-                && mouseY >= py && mouseY <= py + ph
-                && verticalAmount != 0.0) {
-            SbeConfig c = SkyblockExtrasClient.CONFIG;
-            float oldScale = c.petScale;
-            float step = verticalAmount > 0.0 ? 0.10f : -0.10f;
-            float newScale = Math.max(0.50f, Math.min(3.00f, oldScale + step));
+        // Skysoft-style instruction card.
+        g.fill(4,4,326,132,0xEE120016);g.outline(4,4,322,128,0xFF8A42D2);
+        g.text(font,"Skyblock Extras Position Editor",10,10,0xFFFF55FF,false);
+        g.text(font,"Hover a HUD element to move it.",10,30,0xFFE0E0E5,false);
+        g.text(font,"Double-click to select",10,46,0xFFFFFF55,false);
+        g.text(font,"Left-click-drag to move",10,62,0xFFFFFF55,false);
+        g.text(font,"Scroll to resize",10,78,0xFFFFFF55,false);
+        g.text(font,"Esc to exit",10,94,0xFFFFFF55,false);
+        g.text(font,"Selected: "+(selected==null?"None":selected==Element.PET?"Pet Overlay":"RNG Drop Overlay"),10,114,0xFFB86AF0,false);
 
-            if (newScale != oldScale) {
-                c.petScale = newScale;
-                clampPosition();
-                c.save();
-            }
-            return true;
-        }
-
-        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        drawPet(g,mouseX,mouseY);drawRng(g,mouseX,mouseY);
+        g.text(font,"Pet X: "+config().petX+" Y: "+config().petY+" Scale: "+String.format("%.1f",config().petScale),10,height-34,0xFF9B9CA8,false);
+        g.text(font,"RNG X: "+config().rngDropOverlayX+" Y: "+config().rngDropOverlayY+" Scale: "+String.format("%.1f",config().rngDropOverlayScale),10,height-18,0xFF9B9CA8,false);
     }
 
-    @Override
-    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
-        super.extractRenderState(g, mouseX, mouseY, delta);
-        SbeConfig c = SkyblockExtrasClient.CONFIG;
-
-        g.fill(0, 0, width, height, 0xAA08090D);
-        g.fill(12, 12, 190, 40, 0xFF1E1F25);
-        g.outline(12, 12, 178, 28, 0xFF44454E);
-        g.text(font, "POSITION EDITOR", 22, 22, 0xFFE7E7EC, false);
-
-        g.text(font, "Drag the Pet Overlay to move it", 20, 56, 0xFFB4B5BE, false);
-        g.text(font, "Scroll over the overlay to resize it", 20, 73, 0xFF8F909A, false);
-        g.text(font, "X: " + c.petX + "   Y: " + c.petY + "   Scale: " + String.format("%.2f", c.petScale),
-                20, 90, 0xFFC276FF, false);
-
-        int previewX = previewX();
-        int previewY = previewY();
-        int previewW = previewWidth();
-        int previewH = previewHeight();
-
-        boolean hovered = mouseX >= previewX && mouseX <= previewX + previewW
-                && mouseY >= previewY && mouseY <= previewY + previewH;
-
-        int border = dragging ? 0xFFE0A7FF : (hovered ? 0xFFC276FF : 0xFF8A42D2);
-        g.fill(previewX, previewY, previewX + previewW, previewY + previewH,
-                dragging ? 0xFF2A2030 : 0xFF202126);
-        g.outline(previewX, previewY, previewW, previewH, border);
-        g.text(font, "PET OVERLAY", previewX + 12, previewY + 12, 0xFFE8D5F5, false);
-        g.text(font, "[Lvl 100] Pet Name", previewX + 12, previewY + 30, 0xFFD5D5DC, false);
-        g.text(font, "XP  12.3M / 20.0M", previewX + 12, previewY + 48, 0xFF9B9CA8, false);
-        g.text(font, dragging ? "Dragging..." : (hovered ? "Scroll to resize" : "Click and drag me"),
-                previewX + 12, previewY + 63, dragging ? 0xFFC276FF : 0xFF777984, false);
-
-        g.text(font, "Drag to position • Scroll to resize • BACK to return",
-                20, height - 28, 0xFF8F909A, false);
+    private void drawPet(GuiGraphicsExtractor g,int mx,int my){
+        if(!config().petOverlayEnabled)return;
+        int px=x(Element.PET),py=y(Element.PET),pw=petW(),ph=petH();boolean hover=inside(mx,my,px,py,pw,ph);
+        int border=selected==Element.PET?0xFFE0A7FF:hover?0xFFC276FF:0xFF8A42D2;
+        g.fill(px,py,px+pw,py+ph,selected==Element.PET?0xFF2A2030:0xDD202126);g.outline(px,py,pw,ph,border);
+        g.text(font,"PET OVERLAY",px+12,py+10,0xFFE8D5F5,false);
+        g.text(font,"[Lvl 169] Rose Dragon",px+12,py+28,0xFFFFAA00,false);
+        g.text(font,"Level Progress: 87.7%",px+12,py+44,0xFF55FFFF,false);
+        g.text(font,"Pet XP: 157,190,039",px+12,py+58,0xFF55FFFF,false);
+        if(hover||selected==Element.PET)g.text(font,"Drag / scroll",px+12,py+ph-13,0xFFC276FF,false);
     }
 
-    private class EditorButton extends AbstractWidget {
-        private final Runnable action;
-
-        EditorButton(int x, int y, int w, int h, String text, Runnable action) {
-            super(x, y, w, h, Component.literal(text));
-            this.action = action;
-        }
-
-        @Override
-        protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mx, int my, float d) {
-            boolean hover = isHovered();
-            g.fill(getX(), getY(), getX() + width, getY() + height,
-                    hover ? 0xFF292A31 : 0xFF222329);
-            g.outline(getX(), getY(), width, height,
-                    hover ? 0xFFB86AF0 : 0xFF4A4B54);
-            int tw = PositionEditorScreen.this.font.width(getMessage());
-            g.text(PositionEditorScreen.this.font, getMessage(),
-                    getX() + (width - tw) / 2, getY() + 8, 0xFFE0E0E5, false);
-        }
-
-        @Override
-        public void onClick(MouseButtonEvent event, boolean doubleClick) {
-            action.run();
-        }
-
-        @Override
-        protected void updateWidgetNarration(NarrationElementOutput b) {
-            defaultButtonNarrationText(b);
-        }
+    private void drawRng(GuiGraphicsExtractor g,int mx,int my){
+        if(!config().rngDropOverlayEnabled)return;
+        int px=x(Element.RNG),py=y(Element.RNG),pw=rngW(),ph=rngH();boolean hover=inside(mx,my,px,py,pw,ph);
+        int border=selected==Element.RNG?0xFFFFA3FF:hover?0xFFFF55FF:0xFF8A42D2;
+        if(config().rngDropOverlayBackgroundEnabled){g.fill(px,py,px+pw,py+ph,0xEE101018);g.outline(px,py,pw,ph,border);g.fill(px+1,py+1,px+pw-1,py+5,0xFFFF55FF);}
+        g.text(font,"RNG DROP!  x2",px+(pw-font.width("RNG DROP!  x2"))/2,py+10,0xFFFF55FF,true);
+        g.text(font,"Squash",px+(pw-font.width("Squash"))/2,py+31,0xFFFFFFFF,true);
+        g.text(font,"Value: 1.25M",px+(pw-font.width("Value: 1.25M"))/2,py+52,0xFFFFD45A,true);
+        if(hover||selected==Element.RNG)g.text(font,"Drag / scroll",px+12,py+ph-13,0xFFC276FF,false);
     }
 
-    @Override
-    public void onClose() {
-        Minecraft.getInstance().gui.setScreen(parent);
-    }
+    private boolean inside(double mx,double my,int x,int y,int w,int h){return mx>=x&&mx<=x+w&&my>=y&&my<=y+h;}
+    @Override public void onClose(){Minecraft.getInstance().gui.setScreen(parent);}
 }
