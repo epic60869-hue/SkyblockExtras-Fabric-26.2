@@ -2,6 +2,7 @@ package com.skyblockextras;
 
 import com.skyblockextras.config.SbeConfig;
 import com.skyblockextras.pet.PetOverlay;
+import com.skyblockextras.rng.RngDropOverlay;
 import com.skyblockextras.rng.RngTracker;
 import com.skyblockextras.screen.SbeScreen;
 
@@ -10,20 +11,25 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 public class SkyblockExtrasClient implements ClientModInitializer {
     public static final String MOD_ID = "skyblockextras";
     public static SbeConfig CONFIG;
     public static RngTracker RNG;
     public static PetOverlay PET;
+    public static RngDropOverlay RNG_DROP_OVERLAY;
 
     @Override
     public void onInitializeClient() {
         CONFIG = SbeConfig.load();
         RNG = new RngTracker(CONFIG);
         PET = new PetOverlay(CONFIG);
+        RNG_DROP_OVERLAY = new RngDropOverlay(CONFIG);
 
         System.out.println("[SBE] Registering client commands...");
 
@@ -39,6 +45,7 @@ public class SkyblockExtrasClient implements ClientModInitializer {
                                         CONFIG = SbeConfig.load();
                                         RNG = new RngTracker(CONFIG);
                                         PET = new PetOverlay(CONFIG);
+                                        RNG_DROP_OVERLAY = new RngDropOverlay(CONFIG);
                                         context.getSource().sendFeedback(Component.literal("[SBE] Configuration reloaded."));
                                         return 1;
                                     }))
@@ -58,6 +65,22 @@ public class SkyblockExtrasClient implements ClientModInitializer {
             if (minecraft.player == null) return;
             if (RNG != null) RNG.handle(message);
         });
+
+        HudElementRegistry.attachElementBefore(
+                VanillaHudElements.CHAT,
+                Identifier.fromNamespaceAndPath(MOD_ID, "pet_overlay"),
+                (graphics, deltaTracker) -> {
+                    if (PET != null) PET.render(graphics, deltaTracker);
+                }
+        );
+
+        HudElementRegistry.attachElementBefore(
+                VanillaHudElements.CHAT,
+                Identifier.fromNamespaceAndPath(MOD_ID, "rng_drop_overlay"),
+                (graphics, deltaTracker) -> {
+                    if (RNG_DROP_OVERLAY != null) RNG_DROP_OVERLAY.render(graphics, deltaTracker);
+                }
+        );
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (PET != null) PET.tick(client);
