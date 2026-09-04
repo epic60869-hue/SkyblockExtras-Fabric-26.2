@@ -6,36 +6,26 @@ import net.minecraft.network.chat.Component;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Keeps the pet overlay synchronized with Hypixel's live TAB widget.
+ * Reads the active pet directly from Hypixel's TAB "Pet:" section.
  *
- * Hypixel's pet widget is not guaranteed to be stored in the local player's
- * PlayerInfo display name. It can be rendered as a separate TAB entry, so the
- * overlay must scan the whole listed-player collection.
+ * We deliberately do not use a hard-coded pet list. Whatever text Hypixel
+ * places after [Lvl X] in the Pet section becomes the pet name.
  */
 public final class PetTabSync {
     private static final Pattern PET_LINE = Pattern.compile(
-            "(?i)\\[?lvl\\s*(\\d+)\\]?\\s+(?:(\\d+)\\s*[♦◆✦])?\\s*(.+)"
+            "(?i)^\\[?lvl\\s*(\\d+)\\]?\\s*(?:\\d+\\s*[♦◆✦]\\s*)?(.+?)\\s*$"
     );
 
-    private static final String[] KNOWN_PETS = {
-            "Alligator", "Ammonite", "Ankylosaurus", "Armadillo", "Baby Yeti", "Bal", "Bat", "Bee", "Black Cat",
-            "Blaze", "Blue Whale", "Chicken", "Dolphin", "Elephant", "Ender Dragon", "Enderman", "Endermite",
-            "Flying Fish", "Giraffe", "Golden Dragon", "Golem", "Glacite Golem", "Grandma Wolf", "Griffin", "Guardian",
-            "Hedgehog", "Horse", "Hound", "Jade Dragon", "Jellyfish", "Jerry", "Kuudra", "Lion", "Magma Cube",
-            "Megalodon", "Mithril Golem", "Mole", "Monkey", "Mooshroom Cow", "Mosquito", "Ocelot", "Parrot",
-            "Phoenix", "Pig", "Pigman", "Rabbit", "Rat", "Reindeer", "Rock", "Rose Dragon", "Scatha", "Sheep",
-            "Silverfish", "Skeleton", "Skeleton Horse", "Slug", "Snail", "Snowman", "Spirit", "Squid", "Tarantula",
-            "Tiger", "Turtle", "Wisp", "Wither Skeleton", "Wolf", "Zombie", "Rift Ferret"
-    };
-
     private final PetOverlay overlay;
-    private String lastPet = "";
+    private String lastPetLine = "";
 
     public PetTabSync(PetOverlay overlay) {
         this.overlay = overlay;
@@ -44,11 +34,13 @@ public final class PetTabSync {
     public void tick(Minecraft client) {
         if (overlay == null || client == null || client.player == null || client.getConnection() == null) return;
 
-        Collection<PlayerInfo> players = client.getConnection().getListedOnlinePlayers();
+        // Hypixel can use TAB entries which are not marked as "listed".
+        // getListedOnlinePlayers() therefore isn't sufficient for the custom
+        // SkyBlock TAB widget. Try the complete online-player collection first.
+        Collection<PlayerInfo> players = getAllPlayers(client);
         if (players == null || players.isEmpty()) return;
 
-        String pendingPetLabel = null;
-
+        List<String> lines = new ArrayList<>();
         for (PlayerInfo info : players) {
             if (info == null) continue;
             Component display = info.getTabListDisplayName();
@@ -57,64 +49,108 @@ public final class PetTabSync {
             String text = strip(display.getString());
             if (text.isBlank()) continue;
 
-            String lower = text.toLowerCase(Locale.ROOT);
-            if (lower.contains("pet:")) {
-                String after = text.substring(lower.indexOf("pet:") + 4).trim();
-                ParsedPet parsed = parsePet(after);
-                if (parsed != null) {
-                    apply(parsed);
-                    return;
-                }
-                pendingPetLabel = "";
+            for (String line : text.split("\\R")) {
+                line = strip(line);
+                if (!line.isBlank()) lines.add(line);
+            }
+        }
+
+        // Find the actual Pet: section and read the line immediately following
+        // it. This means new pets automatically work without updating a list.
+        for (int i = 0; i < lines.size(); i++) {
+            if (!lines.get(i).equalsIgnoreCase("Pet:")
+                    && !lines.get(i).toLowerCase(Locale.ROOT).startsWith("pet:")) {
                 continue;
             }
 
-            if (pendingPetLabel != null) {
-                ParsedPet parsed = parsePet(text);
+            String inline = "";
+            String current = lines.get(i);
+            if (current.length() > 4 && current.regionMatches(true, 0, "Pet:", 0, 4)) {
+                inline = current.substring(4).trim();
+            }
+
+            // Usually the pet is on the next TAB line:
+            // Pet:
+            // [Lvl 169] 0♦ Rose Dragon
+            if (inline.isBlank()) {
+                for (int j = i + 1; j < lines.size(); j++) {
+                    String candidate = lines.get(j);
+                    ParsedPet parsed = parsePetLine(candidate);
+                    if (parsed != null) {
+                        apply(parsed);
+                        return;
+                    }
+
+                    // Don't accidentally walk into a different TAB section.
+                    if (isSectionLabel(candidate)) break;
+                }
+            } else {
+                ParsedPet parsed = parsePetLine(inline);
                 if (parsed != null) {
                     apply(parsed);
                     return;
                 }
-                // Keep looking for the pet line for a few TAB entries rather
-                // than assuming the next entry is always the pet immediately.
-            }
-
-            // Also support a single TAB entry where the Pet label is omitted.
-            // Only accept a line that contains a known pet name and [Lvl].
-            ParsedPet parsed = parsePet(text);
-            if (parsed != null && (lower.contains("pet") || lower.contains("lvl"))) {
-                apply(parsed);
-                return;
             }
         }
     }
 
-    private ParsedPet parsePet(String text) {
-        if (text == null || text.isBlank()) return null;
-        Matcher matcher = PET_LINE.matcher(text);
-        if (!matcher.find()) return null;
-
-        int level;
+    /**
+     * Get all PlayerInfo entries, including entries Hypixel may mark as not
+     * listed. Reflection keeps this compatible with the current mappings while
+     * falling back to the normal listed-player API if necessary.
+     */
+    @SuppressWarnings("unchecked")
+    private Collection<PlayerInfo> getAllPlayers(Minecraft client) {
         try {
-            level = Integer.parseInt(matcher.group(1));
+            Method method = client.getConnection().getClass().getMethod("getOnlinePlayers");
+            Object result = method.invoke(client.getConnection());
+            if (result instanceof Collection<?>) {
+                return (Collection<PlayerInfo>) result;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Fall back below.
+        }
+
+        return client.getConnection().getListedOnlinePlayers();
+    }
+
+    private ParsedPet parsePetLine(String line) {
+        if (line == null || line.isBlank()) return null;
+
+        Matcher matcher = PET_LINE.matcher(line);
+        if (!matcher.matches()) return null;
+
+        try {
+            int level = Integer.parseInt(matcher.group(1));
+            String name = matcher.group(2).trim();
+            if (name.isBlank()) return null;
+
+            // Remove only the leading rarity/star decoration. Everything else
+            // in the Pet section is intentionally left untouched.
+            name = name.replaceFirst("^[✦✧★☆]+\\s*", "").trim();
+            if (name.isBlank()) return null;
+
+            return new ParsedPet(name, findRarity(line), level, line);
         } catch (NumberFormatException ignored) {
             return null;
         }
-
-        String details = matcher.group(3).trim();
-        String pet = findKnownPet(details);
-        if (pet == null) return null;
-
-        String rarity = findRarity(details);
-        return new ParsedPet(pet, rarity, level);
     }
 
     private void apply(ParsedPet parsed) {
-        boolean changed = !parsed.name.equalsIgnoreCase(lastPet);
-        if (!changed && parsed.name.equalsIgnoreCase(readPetName())) return;
+        // Don't repeatedly reset the overlay every tick when TAB hasn't changed.
+        if (parsed.rawLine.equals(lastPetLine)) return;
+        lastPetLine = parsed.rawLine;
 
         try {
-            Method setPet = PetOverlay.class.getDeclaredMethod("setPet", String.class, String.class, int.class);
+            Field petName = PetOverlay.class.getDeclaredField("petName");
+            petName.setAccessible(true);
+            String oldPet = String.valueOf(petName.get(overlay));
+
+            boolean changed = !parsed.name.equalsIgnoreCase(oldPet);
+
+            Method setPet = PetOverlay.class.getDeclaredMethod(
+                    "setPet", String.class, String.class, int.class
+            );
             setPet.setAccessible(true);
             setPet.invoke(overlay, parsed.name, parsed.rarity, parsed.level);
 
@@ -125,21 +161,8 @@ public final class PetTabSync {
                 setField("resolvedPetIcon", net.minecraft.world.item.ItemStack.EMPTY);
                 setField("resolvedIconKey", "");
             }
-
-            lastPet = parsed.name;
         } catch (ReflectiveOperationException ignored) {
-            // Keep the existing PetOverlay detection as a fallback.
-        }
-    }
-
-    private String readPetName() {
-        try {
-            Field field = PetOverlay.class.getDeclaredField("petName");
-            field.setAccessible(true);
-            Object value = field.get(overlay);
-            return value instanceof String ? (String) value : "";
-        } catch (ReflectiveOperationException ignored) {
-            return "";
+            // PetOverlay's normal detection remains as a fallback.
         }
     }
 
@@ -149,24 +172,16 @@ public final class PetTabSync {
         field.set(overlay, value);
     }
 
-    private static String findKnownPet(String text) {
-        String cleaned = strip(text).replaceAll("^[✦✧★☆]+\\s*", "").trim();
-        String lower = cleaned.toLowerCase(Locale.ROOT);
-        for (String pet : KNOWN_PETS) {
-            String target = pet.toLowerCase(Locale.ROOT);
-            if (lower.equals(target)
-                    || lower.startsWith(target + " ")
-                    || lower.endsWith(" " + target)
-                    || lower.contains(" " + target + " ")) {
-                return pet;
-            }
-        }
-        return null;
+    private static boolean isSectionLabel(String line) {
+        String lower = line.toLowerCase(Locale.ROOT);
+        return lower.endsWith(":") && !lower.startsWith("[lvl");
     }
 
     private static String findRarity(String text) {
-        String lower = text.toLowerCase(Locale.ROOT);
-        for (String rarity : new String[]{"Mythic", "Divine", "Legendary", "Epic", "Rare", "Uncommon", "Common"}) {
+        String lower = strip(text).toLowerCase(Locale.ROOT);
+        for (String rarity : new String[]{
+                "Mythic", "Divine", "Legendary", "Epic", "Rare", "Uncommon", "Common"
+        }) {
             if (lower.contains(rarity.toLowerCase(Locale.ROOT))) return rarity;
         }
         return "";
@@ -180,5 +195,5 @@ public final class PetTabSync {
                 .trim();
     }
 
-    private record ParsedPet(String name, String rarity, int level) {}
+    private record ParsedPet(String name, String rarity, int level, String rawLine) {}
 }
